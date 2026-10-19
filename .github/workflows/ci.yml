@@ -1,0 +1,52 @@
+# Build + test everything on every pull request and push. Deployment workflows reuse the same checks.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: .NET build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore RagPlatform.slnx
+      - run: dotnet build RagPlatform.slnx --no-restore -c Release
+      - run: dotnet test --solution RagPlatform.slnx --no-build -c Release
+
+  frontend:
+    name: Angular build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Frontend/chat-ui
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/Frontend/chat-ui/package-lock.json
+      - run: npm ci
+      - run: npm run test:ci
+      - run: npm run build
+
+  bicep:
+    name: Bicep build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: az bicep install && az bicep build --file infra/main.bicep --stdout > /dev/null

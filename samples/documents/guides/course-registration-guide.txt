@@ -1,0 +1,17 @@
+Course Registration Guide
+
+Registration for the next term opens on the date published in the academic calendar. Students register through
+the student portal using their student number and university email.
+
+Credit limits. Full-time students take between 12 and 18 credits per term. Taking more than 18 credits requires
+approval from your academic advisor and a GPA of at least 3.3.
+
+Prerequisites. The portal blocks registration for courses whose prerequisites are not met. For example, CS201
+Data Structures and Algorithms requires CS101, and DS330 Retrieval-Augmented Generation requires DS210 Machine
+Learning Foundations. Instructors can grant a prerequisite override in exceptional cases.
+
+Waitlists. When a course is full you can join its waitlist. Seats are offered in waitlist order and must be
+accepted within 48 hours, otherwise the seat passes to the next student.
+
+Add/drop. Courses can be added or dropped without penalty until the add/drop deadline, which is usually the end
+of the second week of classes. After that date a dropped course appears on the transcript as W (withdrawn).

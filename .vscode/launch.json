@@ -1,0 +1,86 @@
+{
+  // F5 options for VS Code (C# Dev Kit). Visual Studio users: set RagPlatform.AppHost as the startup project.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Recommended: starts SQL + Azurite containers, all APIs and the Angular app, with the Aspire dashboard.
+      // The C# Dev Kit / Aspire extension attaches the debugger to every .NET service automatically.
+      "name": "Aspire: whole platform",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/src/Aspire/RagPlatform.AppHost/RagPlatform.AppHost.csproj"
+    },
+    {
+      "name": "Rag.Ingestion (choose strategy)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Rag/Rag.Ingestion/bin/Debug/net10.0/Rag.Ingestion.dll",
+      "args": ["--strategy", "${input:strategy}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "DOTNET_ENVIRONMENT": "Development" }
+    },
+    {
+      "name": "Rag.Api",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Rag/Rag.Api/bin/Debug/net10.0/Rag.Api.dll",
+      "cwd": "${workspaceFolder}/src/Rag/Rag.Api",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development", "ASPNETCORE_URLS": "http://localhost:5101" }
+    },
+    {
+      "name": "Students.Api",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Students/Students.Api/bin/Debug/net10.0/Students.Api.dll",
+      "cwd": "${workspaceFolder}/src/Students/Students.Api",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development", "ASPNETCORE_URLS": "http://localhost:5201" }
+    },
+    {
+      "name": "Mcp.Server",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Mcp/Mcp.Server/bin/Debug/net10.0/Mcp.Server.dll",
+      "cwd": "${workspaceFolder}/src/Mcp/Mcp.Server",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development", "ASPNETCORE_URLS": "http://localhost:5301" }
+    },
+    {
+      "name": "Agents.Api",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Agents/Agents.Api/bin/Debug/net10.0/Agents.Api.dll",
+      "cwd": "${workspaceFolder}/src/Agents/Agents.Api",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development", "ASPNETCORE_URLS": "http://localhost:5401" }
+    },
+    {
+      "name": "Angular (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "ng serve",
+      "url": "http://localhost:4200",
+      "webRoot": "${workspaceFolder}/src/Frontend/chat-ui"
+    }
+  ],
+  "compounds": [
+    {
+      // Without Aspire: run SQL Server + Azurite yourself (see docs/local-development.md), then this.
+      "name": "All services (no Aspire)",
+      "configurations": ["Students.Api", "Mcp.Server", "Rag.Api", "Agents.Api", "Angular (Chrome)"],
+      "stopAll": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "strategy",
+      "type": "pickString",
+      "description": "Chunking strategy",
+      "options": ["FixedSize", "SlidingWindow", "Sentence", "Paragraph", "Recursive", "Markdown", "Semantic"],
+      "default": "Recursive"
+    }
+  ]
+}

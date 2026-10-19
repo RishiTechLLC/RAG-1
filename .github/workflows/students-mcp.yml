@@ -1,0 +1,48 @@
+# Project 2 - Students Web API (Azure SQL) + MCP server.
+name: Students API + MCP server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/Students/**
+      - src/Mcp/**
+      - src/Aspire/RagPlatform.ServiceDefaults/**
+      - Directory.*.props
+      - .github/workflows/students-mcp.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: students-mcp-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build src/Students/Students.Api -c Release
+      - run: dotnet build src/Mcp/Mcp.Server -c Release
+
+  deploy-students-api:
+    needs: build
+    uses: ./.github/workflows/_deploy-webapp.yml
+    with:
+      project: src/Students/Students.Api/Students.Api.csproj
+      service: students-api
+    secrets: inherit
+
+  deploy-mcp-server:
+    needs: deploy-students-api
+    uses: ./.github/workflows/_deploy-webapp.yml
+    with:
+      project: src/Mcp/Mcp.Server/Mcp.Server.csproj
+      service: mcp-server
+    secrets: inherit

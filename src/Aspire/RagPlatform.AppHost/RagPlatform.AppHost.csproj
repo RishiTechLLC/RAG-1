@@ -1,0 +1,23 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.1">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>ragplatform-apphost-5d2c7e90</UserSecretsId>
+    <!-- Dashboard + DCP come from NuGet, so plain `dotnet run` / F5 works without installing the Aspire CLI. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Azure.Storage" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" />
+    <PackageReference Include="Aspire.Hosting.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Rag\Rag.Api\Rag.Api.csproj" />
+    <ProjectReference Include="..\..\Students\Students.Api\Students.Api.csproj" />
+    <ProjectReference Include="..\..\Mcp\Mcp.Server\Mcp.Server.csproj" />
+    <ProjectReference Include="..\..\Agents\Agents.Api\Agents.Api.csproj" />
+  </ItemGroup>
+
+</Project>

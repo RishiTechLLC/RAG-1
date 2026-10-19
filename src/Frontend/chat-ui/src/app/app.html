@@ -1,0 +1,105 @@
+<div class="layout">
+  <aside class="sidebar">
+    <h1>Campus Assistant</h1>
+    <p class="subtitle">RAG + MCP multi-agent demo</p>
+
+    <button type="button" class="new-chat" (click)="newChat()">+ New chat</button>
+
+    <label class="field">
+      <span>Route to</span>
+      <select [(ngModel)]="agent" name="agent">
+        @for (option of agentOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+
+    <h2>Agents</h2>
+    @if (degraded()) {
+      <p class="warning">MCP server unreachable — campus data is temporarily unavailable.</p>
+    }
+    <ul class="agents">
+      @for (a of agentInfo(); track a.name) {
+        <li>
+          <strong>{{ label(a.name) }}</strong>
+          <span>{{ a.description }}</span>
+          @if (a.tools.length) {
+            <small>{{ a.tools.join(', ') }}</small>
+          }
+        </li>
+      } @empty {
+        <li class="muted">Agent list unavailable.</li>
+      }
+    </ul>
+  </aside>
+
+  <main class="chat">
+    <section class="messages" #scroller>
+      @if (messages().length === 0) {
+        <div class="empty">
+          <h2>How can I help?</h2>
+          <p>
+            Ask about university policies (vector search), student records (MCP → SQL), or have the
+            writer draft something.
+          </p>
+          <div class="suggestions">
+            @for (s of suggestions; track s) {
+              <button type="button" (click)="send(s)">{{ s }}</button>
+            }
+          </div>
+        </div>
+      }
+
+      @for (m of messages(); track m.id) {
+        <article class="message" [class]="m.role">
+          @if (m.role === 'assistant') {
+            <div class="meta">
+              <span class="badge">{{ label(m.agent) }}</span>
+              <span>{{ ((m.durationMs ?? 0) / 1000).toFixed(1) }}s</span>
+            </div>
+            <div class="content markdown" [innerHTML]="m.content | markdown"></div>
+            @if (m.steps?.length) {
+              <details class="trace">
+                <summary>
+                  How this was answered ({{ m.steps!.length }} step{{
+                    m.steps!.length === 1 ? '' : 's'
+                  }})
+                </summary>
+                <ol>
+                  @for (step of m.steps; track $index) {
+                    <li [class.failed]="!step.succeeded">
+                      <span class="kind" [attr.data-kind]="step.kind">{{ step.kind }}</span>
+                      <code>{{ label(step.caller) }} → {{ step.target }}</code>
+                      <span class="duration">{{ step.durationMs }} ms</span>
+                      <div class="input">{{ step.input }}</div>
+                    </li>
+                  }
+                </ol>
+              </details>
+            }
+          } @else {
+            <div class="content">{{ m.content }}</div>
+          }
+        </article>
+      }
+
+      @if (busy()) {
+        <article class="message assistant pending">
+          <div class="typing"><span></span><span></span><span></span></div>
+        </article>
+      }
+    </section>
+
+    <form class="composer" (ngSubmit)="send()">
+      <textarea
+        name="draft"
+        rows="2"
+        [(ngModel)]="draft"
+        (keydown)="onKeydown($event)"
+        placeholder="Ask a question… (Enter to send, Shift+Enter for a new line)"
+        [disabled]="busy()"
+      ></textarea>
+      <button type="submit" [disabled]="busy() || !draft.trim()">Send</button>
+    </form>
+  </main>
+</div>

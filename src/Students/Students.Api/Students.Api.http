@@ -1,0 +1,15 @@
+@host = http://localhost:5201
+
+GET {{host}}/api/students?search=patel&pageSize=5
+
+###
+GET {{host}}/api/students/1/enrollments
+
+###
+GET {{host}}/api/courses
+
+###
+GET {{host}}/api/courses/CS340/students?term=2025-FA
+
+###
+GET {{host}}/api/stats/majors

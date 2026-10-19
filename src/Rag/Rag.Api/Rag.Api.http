@@ -1,0 +1,27 @@
+@host = http://localhost:5101
+
+GET {{host}}/api/strategies
+
+###
+GET {{host}}/api/documents
+
+###
+POST {{host}}/api/ingest
+Content-Type: application/json
+
+{ "strategy": "Recursive", "chunkSize": 1000, "overlap": 150 }
+
+###
+POST {{host}}/api/search
+Content-Type: application/json
+
+{ "query": "What is the refund policy?", "top": 5, "strategy": "Recursive" }
+
+###
+POST {{host}}/api/ask
+Content-Type: application/json
+
+{ "query": "What is the refund policy?" }
+
+###
+GET {{host}}/api/stats
