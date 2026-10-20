@@ -1,0 +1,107 @@
+# Project 1 - RAG: test, deploy Rag.Api, and (on demand) run ingestion with a chosen chunking strategy.
+name: RAG (ingestion + API)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/Rag/**
+      - src/Aspire/RagPlatform.ServiceDefaults/**
+      - tests/Rag.Core.Tests/**
+      - Directory.*.props
+      - .github/workflows/rag.yml
+  workflow_dispatch:
+    inputs:
+      deploy_api:
+        description: Deploy Rag.Api
+        type: boolean
+        default: true
+      run_ingestion:
+        description: Run ingestion (Blob Storage -> chunking -> Azure AI Search)
+        type: boolean
+        default: false
+      strategy:
+        description: Chunking strategy
+        type: choice
+        default: Recursive
+        options: [FixedSize, SlidingWindow, Sentence, Paragraph, Recursive, Markdown, Semantic]
+      chunk_size:
+        description: Chunk size in characters (blank = appsettings default)
+        type: string
+        default: ''
+      overlap:
+        description: Overlap in characters (blank = appsettings default)
+        type: string
+        default: ''
+      upload_samples:
+        description: Upload samples/documents to the storage container first
+        type: boolean
+        default: false
+      recreate_index:
+        description: Drop and recreate the search index
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: rag-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build src/Rag/Rag.Api -c Release
+      - run: dotnet test --project tests/Rag.Core.Tests -c Release
+
+  deploy-api:
+    needs: test
+    if: github.event_name == 'push' || inputs.deploy_api
+    uses: ./.github/workflows/_deploy-webapp.yml
+    with:
+      project: src/Rag/Rag.Api/Rag.Api.csproj
+      service: rag-api
+    secrets: inherit
+
+  ingest:
+    needs: [test, deploy-api]
+    # Run after the API deploy when it ran, or right after tests when it was skipped.
+    if: always() && needs.test.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.run_ingestion
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve Azure endpoints
+        run: |
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          echo "Storage__AccountUri=$(az storage account list -g $rg --query '[0].primaryEndpoints.blob' -o tsv)" >> "$GITHUB_ENV"
+          echo "Search__Endpoint=https://$(az search service list -g $rg --query '[0].name' -o tsv).search.windows.net" >> "$GITHUB_ENV"
+          echo "AzureOpenAI__Endpoint=$(az cognitiveservices account list -g $rg --query "[?kind=='OpenAI'] | [0].properties.endpoint" -o tsv)" >> "$GITHUB_ENV"
+
+      - name: Run ingestion (${{ inputs.strategy }})
+        # The GitHub service principal needs the data roles granted via AZURE_DEPLOYER_PRINCIPAL_ID in infra.
+        run: |
+          args=(--strategy "${{ inputs.strategy }}")
+          [ -n "${{ inputs.chunk_size }}" ] && args+=(--chunk-size "${{ inputs.chunk_size }}")
+          [ -n "${{ inputs.overlap }}" ] && args+=(--overlap "${{ inputs.overlap }}")
+          [ "${{ inputs.upload_samples }}" = "true" ] && args+=(--upload samples/documents)
+          [ "${{ inputs.recreate_index }}" = "true" ] && args+=(--recreate-index)
+          dotnet run --project src/Rag/Rag.Ingestion -c Release -- "${args[@]}" | tee ingestion.log
+          { echo "### Ingestion (${{ inputs.strategy }})"; echo '```'; tail -n 40 ingestion.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

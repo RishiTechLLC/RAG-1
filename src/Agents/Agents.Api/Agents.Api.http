@@ -1,0 +1,27 @@
+@host = http://localhost:5401
+
+GET {{host}}/api/agents
+
+### Routed to knowledge_agent (vector DB)
+POST {{host}}/api/chat
+Content-Type: application/json
+
+{ "message": "What is the policy for late assignment submissions?", "conversationId": "demo-1" }
+
+### Routed to campus_data_agent (MCP -> Students API / SQL)
+POST {{host}}/api/chat
+Content-Type: application/json
+
+{ "message": "Show me the enrollments and grades for student S2026005", "conversationId": "demo-1" }
+
+### Multi-agent chain: campus_data_agent -> writer_agent
+POST {{host}}/api/chat
+Content-Type: application/json
+
+{ "message": "Draft an email to the students in CS340 for 2026-SP reminding them about the final exam date.", "conversationId": "demo-2" }
+
+### Force a specific agent
+POST {{host}}/api/chat
+Content-Type: application/json
+
+{ "message": "Rewrite this to sound friendlier: Submit your forms by Friday.", "agent": "writer" }

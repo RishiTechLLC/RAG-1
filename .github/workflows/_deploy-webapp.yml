@@ -1,0 +1,67 @@
+# Reusable: publish a .NET project and deploy it to the App Service tagged with `service=<service>`.
+name: Deploy .NET web app (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Path to the .csproj to publish
+        required: true
+        type: string
+      service:
+        description: Value of the `service` tag on the target App Service (rag-api, students-api, mcp-server, agents-api)
+        required: true
+        type: string
+
+permissions:
+  id-token: write # OIDC login to Azure
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.service }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Publish
+        run: dotnet publish "${{ inputs.project }}" -c Release -o ${{ runner.temp }}/publish
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Find App Service
+        id: app
+        run: |
+          name=$(az resource list -g "${{ vars.AZURE_RESOURCE_GROUP }}" --tag service=${{ inputs.service }} \
+            --query "[?type=='Microsoft.Web/sites'].name | [0]" -o tsv)
+          if [ -z "$name" ]; then
+            echo "::error::No App Service tagged service=${{ inputs.service }} in ${{ vars.AZURE_RESOURCE_GROUP }}. Run the 'Infrastructure' workflow first."
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.app.outputs.name }}
+          package: ${{ runner.temp }}/publish
+
+      - name: Smoke test
+        run: |
+          host=$(az webapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "${{ steps.app.outputs.name }}" --query defaultHostName -o tsv)
+          for i in $(seq 1 30); do
+            if curl -fsS "https://$host/alive" > /dev/null; then echo "https://$host is up"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::https://$host/alive did not become healthy"
+          exit 1

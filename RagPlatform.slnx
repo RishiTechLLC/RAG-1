@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/Aspire/">
+    <Project Path="src/Aspire/RagPlatform.AppHost/RagPlatform.AppHost.csproj" />
+    <Project Path="src/Aspire/RagPlatform.ServiceDefaults/RagPlatform.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/1-Rag/">
+    <Project Path="src/Rag/Rag.Core/Rag.Core.csproj" />
+    <Project Path="src/Rag/Rag.Ingestion/Rag.Ingestion.csproj" />
+    <Project Path="src/Rag/Rag.Api/Rag.Api.csproj" />
+  </Folder>
+  <Folder Name="/2-Students-Mcp/">
+    <Project Path="src/Students/Students.Api/Students.Api.csproj" />
+    <Project Path="src/Mcp/Mcp.Server/Mcp.Server.csproj" />
+  </Folder>
+  <Folder Name="/3-Agents/">
+    <Project Path="src/Agents/Agents.Api/Agents.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Rag.Core.Tests/Rag.Core.Tests.csproj" />
+  </Folder>
+</Solution>

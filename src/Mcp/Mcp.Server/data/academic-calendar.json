@@ -1,0 +1,18 @@
+[
+  { "date": "2025-09-02", "term": "2025-FA", "title": "Fall classes begin", "category": "Classes" },
+  { "date": "2025-09-12", "term": "2025-FA", "title": "Last day to add/drop courses", "category": "Registration" },
+  { "date": "2025-10-13", "term": "2025-FA", "title": "Fall reading break", "category": "Holiday" },
+  { "date": "2025-11-27", "term": "2025-FA", "title": "Thanksgiving - campus closed", "category": "Holiday" },
+  { "date": "2025-12-08", "term": "2025-FA", "title": "Final exams begin", "category": "Exams" },
+  { "date": "2025-12-19", "term": "2025-FA", "title": "Fall term ends", "category": "Classes" },
+  { "date": "2026-01-12", "term": "2026-SP", "title": "Spring classes begin", "category": "Classes" },
+  { "date": "2026-01-23", "term": "2026-SP", "title": "Last day to add/drop courses", "category": "Registration" },
+  { "date": "2026-03-09", "term": "2026-SP", "title": "Spring break", "category": "Holiday" },
+  { "date": "2026-04-01", "term": "2026-SP", "title": "Fall 2026 registration opens", "category": "Registration" },
+  { "date": "2026-04-27", "term": "2026-SP", "title": "Final exams begin", "category": "Exams" },
+  { "date": "2026-05-15", "term": "2026-SP", "title": "Commencement", "category": "Ceremony" },
+  { "date": "2026-09-01", "term": "2026-FA", "title": "Fall classes begin", "category": "Classes" },
+  { "date": "2026-09-11", "term": "2026-FA", "title": "Last day to add/drop courses", "category": "Registration" },
+  { "date": "2026-11-26", "term": "2026-FA", "title": "Thanksgiving - campus closed", "category": "Holiday" },
+  { "date": "2026-12-07", "term": "2026-FA", "title": "Final exams begin", "category": "Exams" }
+]

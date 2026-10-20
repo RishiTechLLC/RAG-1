@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "Rag.Ingestion (prompt for strategy)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    "Rag.Ingestion (Recursive)": {
+      "commandName": "Project",
+      "commandLineArgs": "--strategy Recursive",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    "Rag.Ingestion (Semantic)": {
+      "commandName": "Project",
+      "commandLineArgs": "--strategy Semantic",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

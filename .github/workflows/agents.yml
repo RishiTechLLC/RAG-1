@@ -1,0 +1,38 @@
+# Multi-agent API (Microsoft Agent Framework).
+name: Agents API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/Agents/**
+      - src/Aspire/RagPlatform.ServiceDefaults/**
+      - Directory.*.props
+      - .github/workflows/agents.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: agents-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build src/Agents/Agents.Api -c Release
+
+  deploy:
+    needs: build
+    uses: ./.github/workflows/_deploy-webapp.yml
+    with:
+      project: src/Agents/Agents.Api/Agents.Api.csproj
+      service: agents-api
+    secrets: inherit
