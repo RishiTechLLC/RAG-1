@@ -6,15 +6,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Locally Aspire injects ConnectionStrings__StudentsDb for the SQL Server container.
-// In Azure the connection string uses "Authentication=Active Directory Default" (managed identity).
+// ConnectionStrings:StudentsDb comes from (in order of precedence):
+//   - Aspire: your on-prem server if the AppHost has ConnectionStrings:StudentsDb, else the SQL container
+//   - user secrets / appsettings.Development.json when running this project on its own
+//   - the App Service setting in Azure (managed identity to Azure SQL)
 builder.Services.AddDbContext<StudentsDbContext>(options => options
     .UseSqlServer(
         builder.Configuration.GetConnectionString("StudentsDb")
             ?? throw new InvalidOperationException("Connection string 'StudentsDb' is not configured."),
-        sql => sql.EnableRetryOnFailure())
-    .UseAsyncSeeding((ctx, _, ct) => SeedData.SeedAsync(ctx, ct))
-    .UseSeeding((ctx, _) => SeedData.SeedAsync(ctx, CancellationToken.None).GetAwaiter().GetResult()));
+        sql => sql.EnableRetryOnFailure()));
 
 builder.Services.AddHealthChecks().AddDbContextCheck<StudentsDbContext>("database");
 builder.Services.AddOpenApi();
@@ -24,13 +24,13 @@ var app = builder.Build();
 
 if (app.Configuration.GetValue("Database:InitializeOnStartup", true))
 {
-    // Creates the schema and seeds sample data on first run. For production schemas switch to
-    // EF Core migrations: dotnet ef migrations add Initial && dotnet ef database update.
+    // Creates the database/tables if missing and seeds sample data into an empty Students table.
+    // For managed production schemas switch to EF Core migrations (dotnet ef migrations add Initial).
     await using var scope = app.Services.CreateAsyncScope();
-    var db = scope.ServiceProvider.GetRequiredService<StudentsDbContext>();
-
-    // Seeding runs in a transaction, which the retrying execution strategy only allows inside ExecuteAsync.
-    await db.Database.CreateExecutionStrategy().ExecuteAsync(() => db.Database.EnsureCreatedAsync());
+    await DatabaseInitializer.InitializeAsync(
+        scope.ServiceProvider.GetRequiredService<StudentsDbContext>(),
+        app.Configuration.GetValue("Database:SeedSampleData", true),
+        app.Logger);
 }
 
 app.UseExceptionHandler();

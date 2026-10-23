@@ -67,6 +67,26 @@ Then open http://localhost:4200 and ask *"What is the late submission policy?"* 
 * In the dashboard, **Traces** shows one distributed trace per chat turn: the orchestrator's LLM calls, the sub-agent invocation, the MCP HTTP call and the SQL query. In Development, `Agents.Api` also records prompts and completions on the spans (`EnableSensitiveData`).
 * Debug the Angular app with the **"Angular (Chrome)"** launch config, or with the browser dev tools (source maps are enabled in dev builds).
 
+## Using your own (on-prem) SQL Server
+
+By default, Aspire runs SQL Server in a Docker container. To use an existing SQL Server instead (on-prem, SQL Express or LocalDB), give the AppHost a connection string. It then skips the container:
+
+```bash
+cd src/Aspire/RagPlatform.AppHost
+# Windows authentication (your Windows login)
+dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
+# or SQL authentication
+dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER,1433;Database=students;User Id=myuser;Password=MyPassword;TrustServerCertificate=True"
+```
+
+Without Aspire, set the same key on the Students API itself: `dotnet user-secrets --project src/Students/Students.Api set "ConnectionStrings:StudentsDb" "..."`.
+
+* `Server=` examples: `MYSERVER`, `MYSERVER\SQLEXPRESS` (named instance), `192.168.1.20,1433`, `(localdb)\MSSQLLocalDB`.
+* `TrustServerCertificate=True` is needed when the server uses a self-signed certificate (most on-prem installs). SqlClient encrypts connections by default.
+* On startup, the API **creates the database if it doesn't exist** (the login needs `CREATE DATABASE` permission, or create an empty database first). It **creates the `Students`, `Courses` and `Enrollments` tables only if they're missing** and **inserts sample data only into an empty `Students` table**. An existing database that already holds other tables is fine; nothing else is touched.
+* Using your own data: set `Database:SeedSampleData=false`. To manage the schema yourself, also set `Database:InitializeOnStartup=false` and create the tables from the DDL in the PR description / `dotnet ef dbcontext script`.
+* Minimum permissions after the first run: `db_datareader` + `db_datawriter` on the database.
+
 ## Option B — without Aspire
 
 1. Start the containers: `docker compose -f docker-compose.infra.yml up -d`.
@@ -134,6 +154,8 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | `Search:Endpoint is not configured` | Set the AppHost user secrets (Option A) or the project's user secrets (Option B). |
 | Knowledge agent says it *couldn't find* something that is in the documents | Run ingestion first (`POST /api/ingest`) and check `GET /api/stats` shows chunks. By default the agent searches chunks from every strategy; if you set `Downstream:KnowledgeBaseStrategy` on Agents.Api, documents must have been ingested with that strategy. |
 | Agents panel says *MCP server unreachable* | Start `Mcp.Server` first. The orchestrator retries the MCP connection every 30 s. |
+| `Cannot open database "students" requested by the login` (own SQL Server) | The login can't create databases. Create an empty `students` database, or grant `dbcreator`, then restart. |
+| `A connection was successfully established... certificate chain was issued by an authority that is not trusted` | Add `TrustServerCertificate=True` to the connection string. |
 | SQL login failures with Option B | The compose file and `Students.Api/appsettings.Development.json` share the password `Your_strong_password123`. Change both together. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |
