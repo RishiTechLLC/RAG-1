@@ -16,16 +16,6 @@ builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
-// Local dev: Aspire points Storage:SeedFolder at samples/documents so Azurite starts with content.
-var seedFolder = app.Configuration["Storage:SeedFolder"] is { Length: > 0 } folder
-    ? Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, folder))
-    : null;
-if (app.Environment.IsDevelopment() && seedFolder is not null && Directory.Exists(seedFolder))
-{
-    var uploaded = await app.Services.GetRequiredService<DocumentUploader>().UploadFolderAsync(seedFolder, overwrite: false);
-    app.Logger.LogInformation("Seeded {Count} sample document(s) from {Folder}", uploaded, seedFolder);
-}
-
 app.UseExceptionHandler();
 app.MapOpenApi();
 app.MapDefaultEndpoints();

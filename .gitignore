@@ -29,3 +29,8 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Azurite (npm) data
+.azurite/
+__azurite_db_*
+__blobstorage__/

@@ -106,7 +106,7 @@ curl -X POST localhost:5101/api/ingest -H "content-type: application/json" -d '{
 
 **Short answer: yes.** Press F5 on `RagPlatform.AppHost` in Visual Studio 2026, VS Code (C# Dev Kit) or Rider. This starts:
 
-* SQL Server and Azurite (Blob emulator) as Docker containers, with sample data seeded automatically
+* the Blob Storage emulator (Azurite, run with npm by default, so no Docker is needed) and SQL Server (your own server, or a Docker container), with sample data seeded automatically
 * `Rag.Api`, `Students.Api`, `Mcp.Server` and `Agents.Api` as normal .NET processes, so breakpoints work in all of them at once
 * the Angular dev server on http://localhost:4200 (`/api` is proxied to `Agents.Api`)
 * the **Aspire dashboard**, with logs, distributed traces (you can follow a chat request through orchestrator → agent → MCP → SQL) and metrics

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Rag.Core.Chunking;
+using Rag.Core.Documents;
 using Rag.Core.Ingestion;
 using Rag.Core.Search;
 
@@ -16,16 +17,31 @@ public sealed class AutoIngestOptions
 }
 
 /// <summary>
-/// Makes a fresh local environment chat-ready: after startup, if the search index has no chunks yet,
-/// runs the ingestion pipeline once with the configured strategy. Failures are logged, never fatal.
+/// Makes a fresh local environment chat-ready, in the background so the API starts immediately:
+///   1. Development only: uploads Storage:SeedFolder (samples/documents) to the container, retrying while
+///      the storage emulator is still starting (npx downloads Azurite on first run).
+///   2. If the search index has no chunks yet, runs the ingestion pipeline once with the configured strategy.
+/// Failures are logged, never fatal.
 /// </summary>
 public sealed class AutoIngestionService(
     IServiceProvider services,
     IOptions<AutoIngestOptions> options,
+    IConfiguration configuration,
+    IHostEnvironment environment,
     ILogger<AutoIngestionService> logger) : BackgroundService
 {
+    private static readonly TimeSpan StorageWaitTimeout = TimeSpan.FromMinutes(3);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (environment.IsDevelopment() && configuration["Storage:SeedFolder"] is { Length: > 0 } folder)
+        {
+            if (!await SeedSampleDocumentsAsync(Path.GetFullPath(Path.Combine(environment.ContentRootPath, folder)), stoppingToken))
+            {
+                return;
+            }
+        }
+
         if (!options.Value.Enabled)
         {
             return;
@@ -61,6 +77,37 @@ public sealed class AutoIngestionService(
         {
             logger.LogWarning(ex,
                 "Auto-ingestion failed. Check the Search:Endpoint / AzureOpenAI settings and your RBAC roles, then call POST /api/ingest manually.");
+        }
+    }
+
+    /// <returns>false when storage never became reachable (ingestion would fail too).</returns>
+    private async Task<bool> SeedSampleDocumentsAsync(string folder, CancellationToken stoppingToken)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return true;
+        }
+
+        var uploader = services.GetRequiredService<DocumentUploader>();
+        var deadline = DateTimeOffset.UtcNow + StorageWaitTimeout;
+        while (true)
+        {
+            try
+            {
+                var uploaded = await uploader.UploadFolderAsync(folder, overwrite: false, stoppingToken);
+                logger.LogInformation("Seeded {Count} sample document(s) from {Folder}", uploaded, folder);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && DateTimeOffset.UtcNow < deadline)
+            {
+                logger.LogInformation("Blob storage not reachable yet ({Message}); retrying in 5s", ex.Message);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not upload sample documents: blob storage unreachable. Check the Storage settings / the azurite resource.");
+                return false;
+            }
         }
     }
 }

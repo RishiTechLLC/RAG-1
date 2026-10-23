@@ -1,13 +1,13 @@
 # Local development and debugging
 
-All projects can be run and debugged on your machine at the same time. The only cloud dependencies you need while developing are **Azure OpenAI** and **Azure AI Search**, because neither has a local emulator. SQL Server and Blob Storage run in Docker.
+All projects can be run and debugged on your machine at the same time. The only cloud dependencies you need while developing are **Azure OpenAI** and **Azure AI Search**, because neither has a local emulator. Blob Storage runs locally through the Azurite emulator, started with npm (no Docker). SQL Server is either your own server or a Docker container.
 
 ## Prerequisites
 
 | Tool | Version | Why |
 |------|---------|-----|
 | .NET SDK | 10.0.100+ | all back-end projects |
-| Docker Desktop / Podman | recent | SQL Server + Azurite containers |
+| Docker Desktop / Podman | optional | only if you want SQL Server or Azurite in containers. Not needed with your own SQL Server |
 | Node.js | 24 LTS (or 22.22.3+) | Angular 22 |
 | Azure CLI | recent | `az login` for Entra ID auth to Azure OpenAI / AI Search |
 | IDE | Visual Studio 2026, VS Code + C# Dev Kit, or Rider | debugging |
@@ -67,6 +67,17 @@ Then open http://localhost:4200 and ask *"What is the late submission policy?"* 
 * In the dashboard, **Traces** shows one distributed trace per chat turn: the orchestrator's LLM calls, the sub-agent invocation, the MCP HTTP call and the SQL query. In Development, `Agents.Api` also records prompts and completions on the spans (`EnableSensitiveData`).
 * Debug the Angular app with the **"Angular (Chrome)"** launch config, or with the browser dev tools (source maps are enabled in dev builds).
 
+## Running without Docker
+
+Docker is optional:
+
+* **SQL Server:** use your own server (see the section below). The SQL container is then skipped.
+* **Blob Storage:** by default (`LocalStorage:Mode` = `Npm` in the AppHost `appsettings.json`), Azurite runs as a normal process via `npx azurite`. The first start downloads it, which takes a few seconds. Its data lives in `src/Aspire/RagPlatform.AppHost/.azurite` (git-ignored). It listens on port 10000.
+  * `LocalStorage:Mode` = `Container` runs Azurite in Docker instead.
+  * `LocalStorage:Mode` = `Azure` uses a real storage account. Set `Azure:Storage:AccountUri` (e.g. `https://mystorage.blob.core.windows.net/`, which needs the *Storage Blob Data Contributor* role for your account) or `Azure:Storage:ConnectionString` in the AppHost user secrets.
+
+With both set this way, the dashboard shows no containers and no "Container runtime" warning.
+
 ## Using your own (on-prem) SQL Server
 
 By default, Aspire runs SQL Server in a Docker container. To use an existing SQL Server instead (on-prem, SQL Express or LocalDB), give the AppHost a connection string. It then skips the container:
@@ -89,7 +100,7 @@ Without Aspire, set the same key on the Students API itself: `dotnet user-secret
 
 ## Option B — without Aspire
 
-1. Start the containers: `docker compose -f docker-compose.infra.yml up -d`.
+1. Start SQL Server and Azurite: either `docker compose -f docker-compose.infra.yml up -d`, or (no Docker) use your own SQL Server and run `npx --yes azurite-blob --skipApiVersionCheck --loose` in a separate terminal.
 2. Put the Azure settings in user secrets for `Rag.Api`, `Rag.Ingestion` and `Agents.Api`:
    ```bash
    dotnet user-secrets --project src/Rag/Rag.Api set "AzureOpenAI:Endpoint" "https://<aoai>.openai.azure.com/"
@@ -156,6 +167,8 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | Agents panel says *MCP server unreachable* | Start `Mcp.Server` first. The orchestrator retries the MCP connection every 30 s. |
 | `Cannot open database "students" requested by the login` (own SQL Server) | The login can't create databases. Create an empty `students` database, or grant `dbcreator`, then restart. |
 | `A connection was successfully established... certificate chain was issued by an authority that is not trusted` | Add `TrustServerCertificate=True` to the connection string. |
+| Dashboard: *Container runtime not installed* | Something still uses a container. Set `ConnectionStrings:StudentsDb` (own SQL Server) and keep `LocalStorage:Mode` = `Npm` in the AppHost. |
+| `azurite` resource fails / port 10000 in use | Another Azurite or storage emulator is running. Stop it, or use `LocalStorage:Mode` = `Azure`. |
 | SQL login failures with Option B | The compose file and `Students.Api/appsettings.Development.json` share the password `Your_strong_password123`. Change both together. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |
