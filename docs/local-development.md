@@ -130,6 +130,7 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 |---------|-----|
 | `401/403` from Azure OpenAI or Search | Run `az login` and check the RBAC roles above (role assignments can take ~5 minutes to apply), or configure keys. |
 | `Search:Endpoint is not configured` | Set the AppHost user secrets (Option A) or the project's user secrets (Option B). |
+| Knowledge agent says it *couldn't find* something that is in the documents | Run ingestion first (`POST /api/ingest`) and check `GET /api/stats` shows chunks. By default the agent searches chunks from every strategy; if you set `Downstream:KnowledgeBaseStrategy` on Agents.Api, documents must have been ingested with that strategy. |
 | Agents panel says *MCP server unreachable* | Start `Mcp.Server` first. The orchestrator retries the MCP connection every 30 s. |
 | SQL login failures with Option B | The compose file and `Students.Api/appsettings.Development.json` share the password `Your_strong_password123`. Change both together. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
