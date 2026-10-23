@@ -51,10 +51,12 @@ What you get:
 
 The SQL Server and Azurite containers are **persistent** (they survive restarts). On first start `Students.Api` creates and seeds the database, and `Rag.Api` uploads `samples/documents` into the Azurite `documents` container.
 
-**Load the vector index.** Run the ingestion once with any strategy. Use the `Rag.Api.http` file, or:
+**The vector index loads itself.** In Development, `Rag.Api` checks the search index on startup. If the index is empty, it ingests the documents in the background with the `Markdown` strategy. Look for `Auto-ingestion done` in the `rag-api` logs, or check `GET http://localhost:5101/api/stats`. It skips this when chunks already exist, so restarts don't re-ingest. Settings: `Rag:AutoIngest:Enabled` and `Rag:AutoIngest:Strategy` in `Rag.Api/appsettings.Development.json`.
+
+To re-ingest after changing documents, or to add another strategy, call ingestion yourself. Use the `Rag.Api.http` file, or:
 
 ```bash
-curl -X POST http://localhost:5101/api/ingest -H "content-type: application/json" -d '{"strategy":"Markdown"}'
+curl -X POST http://localhost:5101/api/ingest -H "content-type: application/json" -d '{"strategy":"Semantic"}'
 ```
 
 Then open http://localhost:4200 and ask *"What is the late submission policy?"* (knowledge agent) or *"Show the grades for student S2026005"* (MCP → SQL).

@@ -1,3 +1,4 @@
+using Rag.Api;
 using Rag.Core;
 using Rag.Core.Chunking;
 using Rag.Core.Documents;
@@ -8,6 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddRagCore(builder.Configuration);
+builder.Services.Configure<AutoIngestOptions>(builder.Configuration.GetSection(AutoIngestOptions.SectionName));
+builder.Services.AddHostedService<AutoIngestionService>();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
