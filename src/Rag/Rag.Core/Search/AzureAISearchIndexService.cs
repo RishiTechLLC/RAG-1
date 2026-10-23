@@ -155,7 +155,17 @@ public sealed class AzureAISearchIndexService(
     public async Task<IReadOnlyDictionary<string, long>> CountByStrategyAsync(CancellationToken cancellationToken = default)
     {
         var options = new Azure.Search.Documents.SearchOptions { Size = 0, Facets = { "strategy,count:20" } };
-        var response = await Client.SearchAsync<ChunkDocument>("*", options, cancellationToken);
+        Response<SearchResults<ChunkDocument>> response;
+        try
+        {
+            response = await Client.SearchAsync<ChunkDocument>("*", options, cancellationToken);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // The index is created on first ingestion; until then there is simply nothing indexed.
+            return new Dictionary<string, long>();
+        }
+
         return response.Value.Facets.TryGetValue("strategy", out var facets)
             ? facets.ToDictionary(f => f.Value?.ToString() ?? "unknown", f => f.Count ?? 0)
             : new Dictionary<string, long>();

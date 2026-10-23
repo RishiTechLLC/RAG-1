@@ -51,10 +51,12 @@ What you get:
 
 The SQL Server and Azurite containers are **persistent** (they survive restarts). On first start `Students.Api` creates and seeds the database, and `Rag.Api` uploads `samples/documents` into the Azurite `documents` container.
 
-**Load the vector index.** Run the ingestion once with any strategy. Use the `Rag.Api.http` file, or:
+**The vector index loads itself.** In Development, `Rag.Api` checks the search index on startup. If the index is empty, it ingests the documents in the background with the `Markdown` strategy. Look for `Auto-ingestion done` in the `rag-api` logs, or check `GET http://localhost:5101/api/stats`. It skips this when chunks already exist, so restarts don't re-ingest. Settings: `Rag:AutoIngest:Enabled` and `Rag:AutoIngest:Strategy` in `Rag.Api/appsettings.Development.json`.
+
+To re-ingest after changing documents, or to add another strategy, call ingestion yourself. Use the `Rag.Api.http` file, or:
 
 ```bash
-curl -X POST http://localhost:5101/api/ingest -H "content-type: application/json" -d '{"strategy":"Markdown"}'
+curl -X POST http://localhost:5101/api/ingest -H "content-type: application/json" -d '{"strategy":"Semantic"}'
 ```
 
 Then open http://localhost:4200 and ask *"What is the late submission policy?"* (knowledge agent) or *"Show the grades for student S2026005"* (MCP → SQL).
@@ -130,6 +132,7 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 |---------|-----|
 | `401/403` from Azure OpenAI or Search | Run `az login` and check the RBAC roles above (role assignments can take ~5 minutes to apply), or configure keys. |
 | `Search:Endpoint is not configured` | Set the AppHost user secrets (Option A) or the project's user secrets (Option B). |
+| Knowledge agent says it *couldn't find* something that is in the documents | Run ingestion first (`POST /api/ingest`) and check `GET /api/stats` shows chunks. By default the agent searches chunks from every strategy; if you set `Downstream:KnowledgeBaseStrategy` on Agents.Api, documents must have been ingested with that strategy. |
 | Agents panel says *MCP server unreachable* | Start `Mcp.Server` first. The orchestrator retries the MCP connection every 30 s. |
 | SQL login failures with Option B | The compose file and `Students.Api/appsettings.Development.json` share the password `Your_strong_password123`. Change both together. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
