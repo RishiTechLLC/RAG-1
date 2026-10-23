@@ -24,6 +24,8 @@ public static class Extensions
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
 
+        builder.Services.AddExceptionHandler<UpstreamExceptionHandler>();
+
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
