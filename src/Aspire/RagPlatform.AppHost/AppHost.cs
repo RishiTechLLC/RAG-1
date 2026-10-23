@@ -15,12 +15,17 @@ using Microsoft.Extensions.Configuration;
 var builder = DistributedApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
-// ---- Infrastructure (containers) ------------------------------------------------------------
-var sqlPassword = builder.AddParameter("sql-password", secret: true);
-var studentsDb = builder.AddSqlServer("sql", sqlPassword)
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent)
-    .AddDatabase("StudentsDb", databaseName: "students");
+// ---- Infrastructure ---------------------------------------------------------------------------
+// SQL: set ConnectionStrings:StudentsDb in the AppHost user secrets to use your own (on-prem) SQL Server:
+//   dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
+// Otherwise a SQL Server container is started.
+var useExternalSql = !string.IsNullOrWhiteSpace(config.GetConnectionString("StudentsDb"));
+IResourceBuilder<IResourceWithConnectionString> studentsDb = useExternalSql
+    ? builder.AddConnectionString("StudentsDb")
+    : builder.AddSqlServer("sql", builder.AddParameter("sql-password", secret: true))
+        .WithDataVolume()
+        .WithLifetime(ContainerLifetime.Persistent)
+        .AddDatabase("StudentsDb", databaseName: "students");
 
 var storage = builder.AddAzureStorage("storage")
     .RunAsEmulator(emulator => emulator.WithDataVolume().WithLifetime(ContainerLifetime.Persistent));
@@ -39,8 +44,11 @@ var ragApi = builder.AddProject<Projects.Rag_Api>("rag-api")
 
 // ---- Project 2: Students API (SQL) + MCP server -----------------------------------------------
 var studentsApi = builder.AddProject<Projects.Students_Api>("students-api")
-    .WithReference(studentsDb)
-    .WaitFor(studentsDb);
+    .WithReference(studentsDb);
+if (!useExternalSql)
+{
+    studentsApi.WaitFor(studentsDb); // wait for the container; an external server is assumed to be up
+}
 
 var mcpServer = builder.AddProject<Projects.Mcp_Server>("mcp-server")
     .WithEnvironment("StudentsApi__Url", studentsApi.GetEndpoint("http"))
