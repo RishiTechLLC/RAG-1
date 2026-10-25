@@ -104,23 +104,24 @@ curl -X POST localhost:5101/api/ingest -H "content-type: application/json" -d '{
 
 ## Run and debug everything locally — yes, you can
 
-**Short answer: yes.** Press F5 on `RagPlatform.AppHost` in Visual Studio 2026, VS Code (C# Dev Kit) or Rider. This starts:
+**Short answer: yes, without Docker.** Press F5 on `RagPlatform.AppHost` in Visual Studio 2026, VS Code (C# Dev Kit) or Rider. This starts:
 
-* the Blob Storage emulator (Azurite, run with npm by default, so no Docker is needed) and SQL Server (your own server, or a Docker container), with sample data seeded automatically
 * `Rag.Api`, `Students.Api`, `Mcp.Server` and `Agents.Api` as normal .NET processes, so breakpoints work in all of them at once
 * the Angular dev server on http://localhost:4200 (`/api` is proxied to `Agents.Api`)
 * the **Aspire dashboard**, with logs, distributed traces (you can follow a chat request through orchestrator → agent → MCP → SQL) and metrics
 
-Azure OpenAI and Azure AI Search have **no local emulators**, so locally you point at real (dev) instances. Set them once:
+The apps connect to your own SQL Server and to Azure (Storage, OpenAI, AI Search). The schema, sample data and search index are created automatically on first run. Set the connections once:
 
 ```bash
 cd src/Aspire/RagPlatform.AppHost
+dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
+dotnet user-secrets set "Azure:Storage:AccountUri" "https://<account>.blob.core.windows.net/"
 dotnet user-secrets set "Azure:OpenAI:Endpoint" "https://<your-aoai>.openai.azure.com/"
 dotnet user-secrets set "Azure:Search:Endpoint" "https://<your-search>.search.windows.net"
-az login   # or add Azure:OpenAI:ApiKey / Azure:Search:ApiKey secrets instead
+az login   # your identity is used for Storage, OpenAI and Search (RBAC roles in the guide)
 ```
 
-Everything else (SQL, Storage, MCP, all APIs, UI) runs on your machine. [docs/local-development.md](docs/local-development.md) covers prerequisites, debugging tips, running without Aspire, testing the MCP server with MCP Inspector, and troubleshooting.
+[docs/local-development.md](docs/local-development.md) covers prerequisites, RBAC roles, debugging tips, running without Aspire, testing the MCP server with MCP Inspector, and troubleshooting.
 
 ## Deploy to Azure with GitHub Actions
 

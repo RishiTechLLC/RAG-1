@@ -45,8 +45,6 @@
     <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.6.0" />
 
     <!-- Aspire (local orchestration) -->
-    <PackageVersion Include="Aspire.Hosting.SqlServer" Version="13.6.1" />
-    <PackageVersion Include="Aspire.Hosting.Azure.Storage" Version="13.6.1" />
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.6.1" />
 
     <!-- Tests -->

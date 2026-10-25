@@ -18,8 +18,8 @@ public sealed class AutoIngestOptions
 
 /// <summary>
 /// Makes a fresh local environment chat-ready, in the background so the API starts immediately:
-///   1. Development only: uploads Storage:SeedFolder (samples/documents) to the container, retrying while
-///      the storage emulator is still starting (npx downloads Azurite on first run).
+///   1. Development only: uploads missing files from Storage:SeedFolder (samples/documents) to the
+///      container, retrying briefly on transient storage errors.
 ///   2. If the search index has no chunks yet, runs the ingestion pipeline once with the configured strategy.
 /// Failures are logged, never fatal.
 /// </summary>
@@ -105,7 +105,7 @@ public sealed class AutoIngestionService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogWarning(ex, "Could not upload sample documents: blob storage unreachable. Check the Storage settings / the azurite resource.");
+                logger.LogWarning(ex, "Could not upload sample documents: blob storage unreachable. Check Storage:AccountUri / ConnectionString and the Storage Blob Data Contributor role.");
                 return false;
             }
         }

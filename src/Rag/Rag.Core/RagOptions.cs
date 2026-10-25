@@ -5,7 +5,7 @@ public sealed class StorageOptions
 {
     public const string SectionName = "Storage";
 
-    /// <summary>Connection string (Azurite locally, or a key-based string). Takes precedence over <see cref="AccountUri"/>.</summary>
+    /// <summary>Key-based connection string. Takes precedence over <see cref="AccountUri"/>.</summary>
     public string? ConnectionString { get; set; }
 
     /// <summary>e.g. https://mystorage.blob.core.windows.net — used with managed identity / Entra ID.</summary>

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Rag.Core.Documents;
 
-/// <summary>Reads documents from an Azure Blob Storage container (or Azurite when running locally).</summary>
+/// <summary>Reads documents from an Azure Blob Storage container.</summary>
 public sealed class BlobDocumentSource(BlobContainerClient container, ILogger<BlobDocumentSource> logger) : IDocumentSource
 {
     public async IAsyncEnumerable<string> ListDocumentNamesAsync(string? prefix = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)

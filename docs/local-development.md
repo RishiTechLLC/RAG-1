@@ -1,26 +1,34 @@
 # Local development and debugging
 
-All projects can be run and debugged on your machine at the same time. The only cloud dependencies you need while developing are **Azure OpenAI** and **Azure AI Search**, because neither has a local emulator. Blob Storage runs locally through the Azurite emulator, started with npm (no Docker). SQL Server is either your own server or a Docker container.
+All projects can be run and debugged on your machine at the same time. **No Docker is used.** The apps run as normal processes against services you already have:
+
+* **SQL Server:** your own server (on-prem, SQL Express or LocalDB)
+* **Azure Storage account:** holds the documents to ingest
+* **Azure OpenAI** and **Azure AI Search:** no local emulators exist, so these are always in Azure
 
 ## Prerequisites
 
 | Tool | Version | Why |
 |------|---------|-----|
 | .NET SDK | 10.0.100+ | all back-end projects |
-| Docker Desktop / Podman | optional | only if you want SQL Server or Azurite in containers. Not needed with your own SQL Server |
+| SQL Server | 2016+ (any edition) | student database |
 | Node.js | 24 LTS (or 22.22.3+) | Angular 22 |
 | Azure CLI | recent | `az login` for Entra ID auth to Azure OpenAI / AI Search |
 | IDE | Visual Studio 2026, VS Code + C# Dev Kit, or Rider | debugging |
 
-You need an Azure OpenAI resource with a chat deployment (default name `gpt-5-mini`) and an embedding deployment (default `text-embedding-3-small`), plus an Azure AI Search service (the Free tier works for experiments; semantic ranking needs Basic). Running `infra.yml` once creates both. For local access you can either:
+You need an Azure OpenAI resource with a chat deployment (default name `gpt-5-mini`) and an embedding deployment (default `text-embedding-3-small`), an Azure AI Search service with the semantic ranker enabled, and an Azure Storage account. For local access you can either:
 
-* **Use your identity (recommended).** Run `az login`, then grant yourself *Cognitive Services OpenAI User* on the OpenAI resource and *Search Index Data Contributor* + *Search Service Contributor* on the Search service. Setting `AZURE_DEVELOPER_PRINCIPAL_ID` (your user object id) before running the infra deployment grants these roles automatically.
+* **Use your identity (recommended).** Run `az login`, then grant yourself *Cognitive Services OpenAI User* on the OpenAI resource, *Search Index Data Contributor* + *Search Service Contributor* on the Search service, and *Storage Blob Data Contributor* on the storage account. Setting `AZURE_DEVELOPER_PRINCIPAL_ID` (your user object id) before running the infra deployment grants these roles automatically.
 * **Use keys.** Put the API keys in user secrets. This only works if the resources allow key auth; the Bicep template disables it for Azure OpenAI.
 
 ## Option A — Aspire (one F5 for everything)
 
 ```bash
 cd src/Aspire/RagPlatform.AppHost
+# your SQL Server (Windows auth shown; SQL auth: User Id=...;Password=...)
+dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
+# your Azure Storage account (Entra ID; or set Azure:Storage:ConnectionString instead)
+dotnet user-secrets set "Azure:Storage:AccountUri" "https://<account>.blob.core.windows.net/"
 dotnet user-secrets set "Azure:OpenAI:Endpoint" "https://<aoai>.openai.azure.com/"
 dotnet user-secrets set "Azure:Search:Endpoint" "https://<search>.search.windows.net"
 # optional overrides
@@ -28,6 +36,7 @@ dotnet user-secrets set "Azure:OpenAI:ChatDeployment" "gpt-5-mini"
 dotnet user-secrets set "Azure:OpenAI:EmbeddingDeployment" "text-embedding-3-small"
 dotnet user-secrets set "Azure:OpenAI:ApiKey" "<key>"      # only if not using az login
 dotnet user-secrets set "Azure:Search:ApiKey" "<key>"      # only if not using az login
+dotnet user-secrets set "Azure:Storage:ContainerName" "documents"   # default
 
 cd ../../Frontend/chat-ui && npm install && cd -   # first time only
 
@@ -49,7 +58,9 @@ What you get:
 | Mcp.Server | http://localhost:5301/mcp |
 | Agents.Api | http://localhost:5401/openapi/v1.json |
 
-The SQL Server and Azurite containers are **persistent** (they survive restarts). On first start `Students.Api` creates and seeds the database, and `Rag.Api` uploads `samples/documents` into the Azurite `documents` container.
+If `ConnectionStrings:StudentsDb` or the storage account is missing, the AppHost stops at startup with the exact `dotnet user-secrets` command to run.
+
+On first start, `Students.Api` creates and seeds the database (see the SQL section below). `Rag.Api` uploads any **missing** files from `samples/documents` into your storage container; existing blobs are never overwritten. To leave the container untouched, set `Azure:Storage:UploadSampleDocuments` to `false`.
 
 **The vector index loads itself.** In Development, `Rag.Api` checks the search index on startup. If the index is empty, it ingests the documents in the background with the `Markdown` strategy. Look for `Auto-ingestion done` in the `rag-api` logs, or check `GET http://localhost:5101/api/stats`. It skips this when chunks already exist, so restarts don't re-ingest. Settings: `Rag:AutoIngest:Enabled` and `Rag:AutoIngest:Strategy` in `Rag.Api/appsettings.Development.json`.
 
@@ -67,20 +78,9 @@ Then open http://localhost:4200 and ask *"What is the late submission policy?"* 
 * In the dashboard, **Traces** shows one distributed trace per chat turn: the orchestrator's LLM calls, the sub-agent invocation, the MCP HTTP call and the SQL query. In Development, `Agents.Api` also records prompts and completions on the spans (`EnableSensitiveData`).
 * Debug the Angular app with the **"Angular (Chrome)"** launch config, or with the browser dev tools (source maps are enabled in dev builds).
 
-## Running without Docker
+## SQL Server connection
 
-Docker is optional:
-
-* **SQL Server:** use your own server (see the section below). The SQL container is then skipped.
-* **Blob Storage:** by default (`LocalStorage:Mode` = `Npm` in the AppHost `appsettings.json`), Azurite runs as a normal process via `npx azurite`. The first start downloads it, which takes a few seconds. Its data lives in `src/Aspire/RagPlatform.AppHost/.azurite` (git-ignored). It listens on port 10000.
-  * `LocalStorage:Mode` = `Container` runs Azurite in Docker instead.
-  * `LocalStorage:Mode` = `Azure` uses a real storage account. Set `Azure:Storage:AccountUri` (e.g. `https://mystorage.blob.core.windows.net/`, which needs the *Storage Blob Data Contributor* role for your account) or `Azure:Storage:ConnectionString` in the AppHost user secrets.
-
-With both set this way, the dashboard shows no containers and no "Container runtime" warning.
-
-## Using your own (on-prem) SQL Server
-
-By default, Aspire runs SQL Server in a Docker container. To use an existing SQL Server instead (on-prem, SQL Express or LocalDB), give the AppHost a connection string. It then skips the container:
+The AppHost passes `ConnectionStrings:StudentsDb` to the Students API:
 
 ```bash
 cd src/Aspire/RagPlatform.AppHost
@@ -100,7 +100,12 @@ Without Aspire, set the same key on the Students API itself: `dotnet user-secret
 
 ## Option B — without Aspire
 
-1. Start SQL Server and Azurite: either `docker compose -f docker-compose.infra.yml up -d`, or (no Docker) use your own SQL Server and run `npx --yes azurite-blob --skipApiVersionCheck --loose` in a separate terminal.
+1. Set the connection strings in each project's user secrets:
+   ```bash
+   dotnet user-secrets --project src/Students/Students.Api set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
+   # Storage:AccountUri for Rag.Api, Rag.Ingestion and Mcp.Server
+   dotnet user-secrets --project src/Rag/Rag.Api set "Storage:AccountUri" "https://<account>.blob.core.windows.net/"
+   ```
 2. Put the Azure settings in user secrets for `Rag.Api`, `Rag.Ingestion` and `Agents.Api`:
    ```bash
    dotnet user-secrets --project src/Rag/Rag.Api set "AzureOpenAI:Endpoint" "https://<aoai>.openai.azure.com/"
@@ -167,8 +172,8 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | Agents panel says *MCP server unreachable* | Start `Mcp.Server` first. The orchestrator retries the MCP connection every 30 s. |
 | `Cannot open database "students" requested by the login` (own SQL Server) | The login can't create databases. Create an empty `students` database, or grant `dbcreator`, then restart. |
 | `A connection was successfully established... certificate chain was issued by an authority that is not trusted` | Add `TrustServerCertificate=True` to the connection string. |
-| Dashboard: *Container runtime not installed* | Something still uses a container. Set `ConnectionStrings:StudentsDb` (own SQL Server) and keep `LocalStorage:Mode` = `Npm` in the AppHost. |
-| `azurite` resource fails / port 10000 in use | Another Azurite or storage emulator is running. Stop it, or use `LocalStorage:Mode` = `Azure`. |
-| SQL login failures with Option B | The compose file and `Students.Api/appsettings.Development.json` share the password `Your_strong_password123`. Change both together. |
+| AppHost stops with *'ConnectionStrings:StudentsDb' is not configured* or *'Azure:Storage:AccountUri' is not configured* | Run the `dotnet user-secrets set` command printed in the message, in `src/Aspire/RagPlatform.AppHost`. |
+| `403 AuthorizationPermissionMismatch` from Blob Storage | Grant your account *Storage Blob Data Contributor* on the storage account (Owner/Contributor is not enough for data access), wait ~5 minutes. Or use `Azure:Storage:ConnectionString` with an account key. |
+| `KeyBasedAuthenticationNotPermitted` | The storage account disallows key access. Use `Azure:Storage:AccountUri` (Entra ID) instead of a connection string. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |

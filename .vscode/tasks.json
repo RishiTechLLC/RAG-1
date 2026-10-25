@@ -5,9 +5,15 @@
       "label": "build",
       "command": "dotnet",
       "type": "process",
-      "args": ["build", "${workspaceFolder}/RagPlatform.slnx"],
+      "args": [
+        "build",
+        "${workspaceFolder}/RagPlatform.slnx"
+      ],
       "problemMatcher": "$msCompile",
-      "group": { "kind": "build", "isDefault": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     },
     {
       "label": "ng serve",
@@ -17,19 +23,15 @@
       "isBackground": true,
       "problemMatcher": {
         "owner": "angular",
-        "pattern": { "regexp": "^$" },
+        "pattern": {
+          "regexp": "^$"
+        },
         "background": {
           "activatesOn": "Building",
           "beginsPattern": "Building|Changes detected",
           "endsPattern": "Application bundle generation (complete|failed)|Local:"
         }
       }
-    },
-    {
-      "label": "local infra (SQL + Azurite)",
-      "type": "shell",
-      "command": "docker compose -f docker-compose.infra.yml up -d",
-      "problemMatcher": []
     }
   ]
 }
