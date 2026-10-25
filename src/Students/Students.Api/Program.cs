@@ -17,21 +17,14 @@ builder.Services.AddDbContext<StudentsDbContext>(options => options
         sql => sql.EnableRetryOnFailure()));
 
 builder.Services.AddHealthChecks().AddDbContextCheck<StudentsDbContext>("database");
+
+// Creates the database/tables if missing and seeds sample data, retrying until SQL Server is reachable.
+// For managed production schemas switch to EF Core migrations (dotnet ef migrations add Initial).
+builder.Services.AddHostedService<DatabaseInitializerService>();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
-
-if (app.Configuration.GetValue("Database:InitializeOnStartup", true))
-{
-    // Creates the database/tables if missing and seeds sample data into an empty Students table.
-    // For managed production schemas switch to EF Core migrations (dotnet ef migrations add Initial).
-    await using var scope = app.Services.CreateAsyncScope();
-    await DatabaseInitializer.InitializeAsync(
-        scope.ServiceProvider.GetRequiredService<StudentsDbContext>(),
-        app.Configuration.GetValue("Database:SeedSampleData", true),
-        app.Logger);
-}
 
 app.UseExceptionHandler();
 app.MapOpenApi();

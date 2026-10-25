@@ -27,8 +27,29 @@ jobs:
       AZURE_OPENAI_LOCATION: ${{ vars.AZURE_OPENAI_LOCATION || vars.AZURE_LOCATION }}
       AZURE_DEPLOYER_PRINCIPAL_ID: ${{ vars.AZURE_DEPLOYER_PRINCIPAL_ID }}
       AZURE_DEVELOPER_PRINCIPAL_ID: ${{ vars.AZURE_DEVELOPER_PRINCIPAL_ID }}
+      # Student database: OnPrem (default, via Hybrid Connection) or Azure
+      AZURE_SQL_MODE: ${{ vars.AZURE_SQL_MODE || 'OnPrem' }}
+      AZURE_ONPREM_SQL_HOST: ${{ vars.AZURE_ONPREM_SQL_HOST }}
+      AZURE_ONPREM_SQL_PORT: ${{ vars.AZURE_ONPREM_SQL_PORT || '1433' }}
+      ONPREM_SQL_CONNECTION_STRING: ${{ secrets.ONPREM_SQL_CONNECTION_STRING }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Validate SQL settings
+        run: |
+          if [ "$AZURE_SQL_MODE" = "OnPrem" ]; then
+            missing=""
+            [ -z "$AZURE_ONPREM_SQL_HOST" ] && missing="$missing variable AZURE_ONPREM_SQL_HOST,"
+            [ -z "$ONPREM_SQL_CONNECTION_STRING" ] && missing="$missing secret ONPREM_SQL_CONNECTION_STRING,"
+            if [ -n "$missing" ]; then
+              echo "::error::AZURE_SQL_MODE=OnPrem needs:${missing%,}. See docs/azure-deployment.md (On-prem SQL Server)."
+              exit 1
+            fi
+            case "$ONPREM_SQL_CONNECTION_STRING" in
+              *"$AZURE_ONPREM_SQL_HOST"*) ;;
+              *) echo "::warning::The connection string's Server= does not contain '$AZURE_ONPREM_SQL_HOST'. App Service only tunnels that exact host:port through the Hybrid Connection." ;;
+            esac
+          fi
 
       - uses: azure/login@v2
         with:
@@ -52,3 +73,11 @@ jobs:
             --query properties.outputs -o json > outputs.json
           jq -r 'to_entries[] | "| \(.key) | \(.value.value) |"' outputs.json > rows.md
           { echo "### Deployment outputs"; echo "| Output | Value |"; echo "|---|---|"; cat rows.md; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$AZURE_SQL_MODE" = "OnPrem" ]; then
+            {
+              echo ""
+              echo "### Next: connect your on-prem SQL Server"
+              echo "Install the **Hybrid Connection Manager** on a Windows machine that can reach \`$AZURE_ONPREM_SQL_HOST:$AZURE_ONPREM_SQL_PORT\`,"
+              echo "sign in and add the hybrid connection \`$(jq -r .hybridConnectionName.value outputs.json)\`. See docs/azure-deployment.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

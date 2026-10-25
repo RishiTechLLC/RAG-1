@@ -5,7 +5,7 @@ An end-to-end reference solution with four parts:
 | # | Part | What it does | Code |
 |---|------|--------------|------|
 | 1 | **RAG ingestion + API** | Pulls documents from **Azure Blob Storage**, chunks them with a **strategy you pick at run time** (7 options), embeds them with Azure OpenAI and stores the vectors in **Azure AI Search**. Exposes hybrid vector search and a RAG "ask" endpoint. | `src/Rag` |
-| 2 | **Students Web API + MCP server** | ASP.NET Core Web API over **SQL Server / Azure SQL** (students, courses, enrollments, grades). A **Model Context Protocol server** exposes tools that pull from several sources: the Students API, Blob Storage, an academic-calendar data file and a live weather API. | `src/Students`, `src/Mcp` |
+| 2 | **Students Web API + MCP server** | ASP.NET Core Web API over **SQL Server** (on-prem, or Azure SQL) (students, courses, enrollments, grades). A **Model Context Protocol server** exposes tools that pull from several sources: the Students API, Blob Storage, an academic-calendar data file and a live weather API. | `src/Students`, `src/Mcp` |
 | 3 | **Multi-agent API** | Built with **Microsoft Agent Framework**. An orchestrator agent decides per request whether to call the **vector database** (knowledge agent), the **MCP server** (campus data agent) or **another agent** (writer agent), or several of them in sequence, then returns the answer and a trace of every step. | `src/Agents` |
 | 4 | **Angular chat front end** | Chat UI that calls the multi-agent API, renders Markdown answers and shows how each answer was produced. | `src/Frontend/chat-ui` |
 
@@ -24,7 +24,7 @@ flowchart LR
     K -->|search_knowledge_base| RAG["Rag.Api"]
     RAG --> AIS[("Azure AI Search<br/>vector index")]
     C -->|MCP Streamable HTTP| MCP["Mcp.Server"]
-    MCP --> STU["Students.Api"] --> SQL[("Azure SQL")]
+    MCP --> STU["Students.Api"] --> SQL[("On-prem SQL Server<br/>(Hybrid Connection)")]
     MCP --> BLOB[("Blob Storage")]
     MCP --> CAL["calendar.json"]
     MCP --> WX["Open-Meteo API"]
@@ -134,7 +134,7 @@ az login   # your identity is used for Storage, OpenAI and Search (RBAC roles in
 | `agents.yml` | `src/Agents/**` | `Agents.Api` |
 | `frontend.yml` | `src/Frontend/**` | Angular app to Static Web Apps |
 
-Authentication uses **OpenID Connect** (no stored Azure secrets). The apps use one **user-assigned managed identity** with RBAC to Storage, AI Search, Azure OpenAI and Azure SQL, so no keys or passwords are kept in configuration. [docs/azure-deployment.md](docs/azure-deployment.md) has the one-time setup: service principal, federated credentials, GitHub variables, and the first deployment.
+The student database is your **on-prem SQL Server**, reached from Azure through an App Service **Hybrid Connection** (no VPN). Azure SQL is available as an option. Authentication uses **OpenID Connect** (no stored Azure secrets). The apps use one **user-assigned managed identity** with RBAC to Storage, AI Search, Azure OpenAI and Key Vault. The only password, the on-prem SQL login, lives in Key Vault. [docs/azure-deployment.md](docs/azure-deployment.md) has the one-time setup: service principal, federated credentials, GitHub variables, and the first deployment.
 
 ## Tech stack
 
