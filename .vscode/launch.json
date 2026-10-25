@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      // Recommended: starts SQL + Azurite containers, all APIs and the Angular app, with the Aspire dashboard.
+      // Recommended: starts all APIs and the Angular app (against your SQL Server + Azure Storage), with the Aspire dashboard.
       // The C# Dev Kit / Aspire extension attaches the debugger to every .NET service automatically.
       "name": "Aspire: whole platform",
       "type": "dotnet",
@@ -68,7 +68,7 @@
   ],
   "compounds": [
     {
-      // Without Aspire: run SQL Server + Azurite yourself (see docs/local-development.md), then this.
+      // Without Aspire: set the connection strings in each project's user secrets (see docs/local-development.md), then this.
       "name": "All services (no Aspire)",
       "configurations": ["Students.Api", "Mcp.Server", "Rag.Api", "Agents.Api", "Angular (Chrome)"],
       "stopAll": true

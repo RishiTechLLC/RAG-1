@@ -52,6 +52,20 @@ param deployerPrincipalId string = ''
 @description('Object id of a developer/user to grant the same data-plane roles (for local debugging against Azure). Leave empty to skip.')
 param developerPrincipalId string = ''
 
+@description('Where the student database lives: "OnPrem" = your own SQL Server reached through an App Service Hybrid Connection; "Azure" = a new Azure SQL database.')
+@allowed(['OnPrem', 'Azure'])
+param sqlMode string = 'OnPrem'
+
+@description('OnPrem: host name of the SQL Server exactly as the on-prem network resolves it (e.g. "SQLSRV01" or "sqlsrv01.corp.local"). Must match the Server= value in the connection string.')
+param onPremSqlHost string = ''
+
+@description('OnPrem: TCP port of the SQL Server. Hybrid Connections need a fixed port (named instances must be pinned to one).')
+param onPremSqlPort int = 1433
+
+@description('OnPrem: SQL Server connection string using a SQL login (Windows auth is not possible from App Service), e.g. "Server=tcp:SQLSRV01,1433;Database=students;User Id=app_students;Password=...;TrustServerCertificate=True". Stored in Key Vault.')
+@secure()
+param onPremSqlConnectionString string = ''
+
 @description('Shared secret between Agents.Api and the MCP server. Defaults to a new random value on every deployment.')
 @secure()
 param mcpApiKey string = newGuid()
@@ -59,6 +73,8 @@ param mcpApiKey string = newGuid()
 var suffix = substring(uniqueString(subscription().id, resourceGroup().id, environmentName), 0, 6)
 var prefix = toLower('${environmentName}-${suffix}')
 var tags = { environment: environmentName, workload: 'rag-multi-agent' }
+var useOnPremSql = sqlMode == 'OnPrem'
+
 
 // ---------------------------------------------------------------------------------------
 // Monitoring
@@ -176,12 +192,75 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 }
 
 // ---------------------------------------------------------------------------------------
-// Azure SQL (student information) - Entra-only authentication
+// Option 1 (sqlMode = 'OnPrem'): your own SQL Server through an App Service Hybrid Connection.
+//   Azure Relay hybrid connection <- Hybrid Connection Manager (installed on-prem) -> SQLHOST:PORT
+//   The connection string (SQL login) lives in Key Vault; the app reads it with its managed identity.
+// ---------------------------------------------------------------------------------------
+resource relay 'Microsoft.Relay/namespaces@2021-11-01' = if (useOnPremSql) {
+  name: 'relay-${prefix}'
+  location: location
+  tags: tags
+  sku: { name: 'Standard', tier: 'Standard' }
+}
+
+resource sqlHybridConnection 'Microsoft.Relay/namespaces/hybridConnections@2021-11-01' = if (useOnPremSql) {
+  parent: relay
+  name: 'onprem-sql'
+  properties: {
+    requiresClientAuthorization: true
+    // App Service and the Hybrid Connection Manager read the target endpoint from this metadata.
+    userMetadata: '[{"key":"endpoint","value":"${onPremSqlHost}:${onPremSqlPort}"}]'
+  }
+}
+
+resource sqlHybridSendRule 'Microsoft.Relay/namespaces/hybridConnections/authorizationRules@2021-11-01' = if (useOnPremSql) {
+  parent: sqlHybridConnection
+  name: 'defaultSender'
+  properties: { rights: ['Send'] }
+}
+
+resource sqlHybridListenRule 'Microsoft.Relay/namespaces/hybridConnections/authorizationRules@2021-11-01' = if (useOnPremSql) {
+  parent: sqlHybridConnection
+  name: 'defaultListener'
+  properties: { rights: ['Listen'] }
+}
+
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = if (useOnPremSql) {
+  name: take('kv-${replace(prefix, '-', '')}', 24)
+  location: location
+  tags: tags
+  properties: {
+    tenantId: subscription().tenantId
+    sku: { family: 'A', name: 'standard' }
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7
+  }
+}
+
+resource studentsDbSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (useOnPremSql) {
+  parent: keyVault
+  name: 'StudentsDb'
+  properties: { value: onPremSqlConnectionString }
+}
+
+resource keyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useOnPremSql) {
+  scope: keyVault
+  name: guid(keyVault.id, identity.id, '4633458b-17de-408a-b874-0445c86b69e6')
+  properties: {
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6') // Key Vault Secrets User
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Option 2 (sqlMode = 'Azure'): Azure SQL (student information) - Entra-only authentication
 // The managed identity is the Entra admin so Students.Api can create the schema on first run.
 // For production, make a group the admin and grant the app a contained user with
 // db_datareader/db_datawriter instead.
 // ---------------------------------------------------------------------------------------
-resource sqlServer 'Microsoft.Sql/servers@2023-08-01' = {
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01' = if (!useOnPremSql) {
   name: 'sql-${prefix}'
   location: location
   tags: tags
@@ -199,13 +278,13 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01' = {
   }
 }
 
-resource sqlAllowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01' = {
+resource sqlAllowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01' = if (!useOnPremSql) {
   parent: sqlServer
   name: 'AllowAzureServices'
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
 }
 
-resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01' = {
+resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01' = if (!useOnPremSql) {
   parent: sqlServer
   name: 'students'
   location: location
@@ -299,7 +378,9 @@ var serviceSettings = {
   'students-api': [
     {
       name: 'ConnectionStrings__StudentsDb'
-      value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabase.name};Authentication=Active Directory Managed Identity;User Id=${identity.properties.clientId};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;'
+      value: useOnPremSql
+        ? '@Microsoft.KeyVault(SecretUri=${studentsDbSecret!.properties.secretUri})'
+        : 'Server=tcp:${sqlServer!.properties.fullyQualifiedDomainName},1433;Database=${sqlDatabase!.name};Authentication=Active Directory Managed Identity;User Id=${identity.properties.clientId};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;'
     }
     { name: 'Database__InitializeOnStartup', value: 'true' }
   ]
@@ -340,8 +421,23 @@ resource apps 'Microsoft.Web/sites@2024-04-01' = [for key in serviceKeys: {
       appSettings: concat(commonSettings, serviceSettings[key])
     }
   }
-  dependsOn: [appDataAccess, sqlAllowAzure]
+  dependsOn: [appDataAccess, sqlAllowAzure, keyVaultSecretsUser]
 }]
+
+// Connects the Students API to the hybrid connection (OnPrem mode).
+resource studentsApiHybridConnection 'Microsoft.Web/sites/hybridConnectionNamespaces/relays@2024-04-01' = if (useOnPremSql) {
+  name: '${apps[1].name}/${relay.name}/${sqlHybridConnection.name}'
+  properties: {
+    serviceBusNamespace: relay.name
+    serviceBusSuffix: '.servicebus.windows.net'
+    relayName: sqlHybridConnection.name
+    relayArmUri: sqlHybridConnection.id
+    hostname: onPremSqlHost
+    port: onPremSqlPort
+    sendKeyName: sqlHybridSendRule.name
+    sendKeyValue: sqlHybridSendRule!.listKeys().primaryKey
+  }
+}
 
 // ---------------------------------------------------------------------------------------
 // Outputs (used by the GitHub workflows and printed after deployment)
@@ -361,5 +457,7 @@ output searchEndpoint string = 'https://${search.name}.search.windows.net'
 output openAiEndpoint string = openAi.properties.endpoint
 output chatDeploymentName string = chatDeployment.name
 output embeddingDeploymentName string = embeddingDeployment.name
-output sqlServerName string = sqlServer.name
+output sqlMode string = sqlMode
+output sqlServerName string = useOnPremSql ? '${onPremSqlHost}:${onPremSqlPort} (on-prem)' : sqlServer!.name
+output hybridConnectionName string = useOnPremSql ? '${relay.name}/${sqlHybridConnection.name}' : ''
 output managedIdentityClientId string = identity.properties.clientId

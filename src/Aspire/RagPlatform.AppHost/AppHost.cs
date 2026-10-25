@@ -1,61 +1,76 @@
 using Microsoft.Extensions.Configuration;
 
 // Local orchestration for the whole platform: `dotnet run --project src/Aspire/RagPlatform.AppHost`
-// (or F5 in Visual Studio / VS Code / Rider). Starts SQL Server + Azurite containers, all four .NET
-// services and the Angular app, wires their URLs together, and opens the Aspire dashboard with logs,
-// traces and metrics. Breakpoints work in every .NET project because they run as normal processes.
+// (or F5 in Visual Studio / VS Code / Rider). Starts all four .NET services and the Angular app as normal
+// processes, wires their URLs together, and opens the Aspire dashboard with logs, traces and metrics.
+// No Docker: every backing service is one you already have.
 //
-// Azure OpenAI and Azure AI Search have no local emulators, so point them at real (dev) resources:
-//   cd src/Aspire/RagPlatform.AppHost
+// Configure once with user secrets (cd src/Aspire/RagPlatform.AppHost):
+//   dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
+//   dotnet user-secrets set "Azure:Storage:AccountUri" "https://<account>.blob.core.windows.net/"   (or Azure:Storage:ConnectionString)
 //   dotnet user-secrets set "Azure:OpenAI:Endpoint" "https://<your-aoai>.openai.azure.com/"
 //   dotnet user-secrets set "Azure:Search:Endpoint" "https://<your-search>.search.windows.net"
-//   (optional) dotnet user-secrets set "Azure:OpenAI:ApiKey" "<key>" / "Azure:Search:ApiKey" "<key>"
-// Without keys, your `az login` / Visual Studio identity is used (needs the RBAC roles in docs/local-development.md).
+// Without keys/connection strings with keys, your `az login` / Visual Studio identity is used
+// (needs the RBAC roles in docs/local-development.md).
 
 var builder = DistributedApplication.CreateBuilder(args);
 var config = builder.Configuration;
 
-// ---- Infrastructure ---------------------------------------------------------------------------
-// SQL: set ConnectionStrings:StudentsDb in the AppHost user secrets to use your own (on-prem) SQL Server:
-//   dotnet user-secrets set "ConnectionStrings:StudentsDb" "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True"
-// Otherwise a SQL Server container is started.
-var useExternalSql = !string.IsNullOrWhiteSpace(config.GetConnectionString("StudentsDb"));
-IResourceBuilder<IResourceWithConnectionString> studentsDb = useExternalSql
-    ? builder.AddConnectionString("StudentsDb")
-    : builder.AddSqlServer("sql", builder.AddParameter("sql-password", secret: true))
-        .WithDataVolume()
-        .WithLifetime(ContainerLifetime.Persistent)
-        .AddDatabase("StudentsDb", databaseName: "students");
+// ---- Backing services (your own SQL Server + Azure Storage account) ----------------------------
+static string Require(string? value, string key, string example) =>
+    !string.IsNullOrWhiteSpace(value)
+        ? value
+        : throw new InvalidOperationException(
+            $"'{key}' is not configured. In src/Aspire/RagPlatform.AppHost run: dotnet user-secrets set \"{key}\" \"{example}\"");
 
-var storage = builder.AddAzureStorage("storage")
-    .RunAsEmulator(emulator => emulator.WithDataVolume().WithLifetime(ContainerLifetime.Persistent));
-var blobs = storage.AddBlobs("blobs");
-storage.AddBlobContainer("documents");
+Require(config.GetConnectionString("StudentsDb"), "ConnectionStrings:StudentsDb",
+    "Server=MYSERVER;Database=students;Trusted_Connection=True;TrustServerCertificate=True");
+var studentsDb = builder.AddConnectionString("StudentsDb");
 
-var samplesFolder = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "..", "..", "..", "samples", "documents"));
+var storageAccountUri = config["Azure:Storage:AccountUri"];
+var storageConnectionString = config["Azure:Storage:ConnectionString"];
+if (string.IsNullOrWhiteSpace(storageAccountUri))
+{
+    Require(storageConnectionString, "Azure:Storage:AccountUri", "https://<account>.blob.core.windows.net/");
+}
+
+var storageContainer = config["Azure:Storage:ContainerName"] is { Length: > 0 } name ? name : "documents";
+
+// Points a service at the Azure Storage account: Entra ID (AccountUri) wins over a connection string.
+IResourceBuilder<ProjectResource> WithDocumentStorage(IResourceBuilder<ProjectResource> project)
+{
+    project.WithEnvironment("Storage__ContainerName", storageContainer);
+    if (!string.IsNullOrWhiteSpace(storageAccountUri))
+    {
+        project.WithEnvironment("Storage__AccountUri", storageAccountUri);
+        project.WithEnvironment("Storage__ConnectionString", string.Empty);
+    }
+    else
+    {
+        project.WithEnvironment("Storage__ConnectionString", storageConnectionString!);
+    }
+
+    return project;
+}
+
+// Sample documents are uploaded to the container on startup if missing (Development only).
+// Set Azure:Storage:UploadSampleDocuments=false to keep your container untouched.
+var samplesFolder = config.GetValue("Azure:Storage:UploadSampleDocuments", true)
+    ? Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "..", "..", "..", "samples", "documents"))
+    : string.Empty;
 
 // ---- Project 1: RAG API (Blob -> chunking -> Azure AI Search) -----------------------------------
-var ragApi = builder.AddProject<Projects.Rag_Api>("rag-api")
-    .WithEnvironment("Storage__ConnectionString", blobs.Resource.ConnectionStringExpression)
-    .WithEnvironment("Storage__ContainerName", "documents")
+var ragApi = WithDocumentStorage(builder.AddProject<Projects.Rag_Api>("rag-api"))
     .WithEnvironment("Storage__SeedFolder", samplesFolder)
-    .WithAzureSettings(config)
-    .WaitFor(blobs);
+    .WithAzureSettings(config);
 
 // ---- Project 2: Students API (SQL) + MCP server -----------------------------------------------
 var studentsApi = builder.AddProject<Projects.Students_Api>("students-api")
     .WithReference(studentsDb);
-if (!useExternalSql)
-{
-    studentsApi.WaitFor(studentsDb); // wait for the container; an external server is assumed to be up
-}
 
-var mcpServer = builder.AddProject<Projects.Mcp_Server>("mcp-server")
+var mcpServer = WithDocumentStorage(builder.AddProject<Projects.Mcp_Server>("mcp-server"))
     .WithEnvironment("StudentsApi__Url", studentsApi.GetEndpoint("http"))
-    .WithEnvironment("Storage__ConnectionString", blobs.Resource.ConnectionStringExpression)
-    .WithEnvironment("Storage__ContainerName", "documents")
-    .WaitFor(studentsApi)
-    .WaitFor(blobs);
+    .WaitFor(studentsApi);
 
 // ---- Multi-agent API (Microsoft Agent Framework) ----------------------------------------------
 var agentsApi = builder.AddProject<Projects.Agents_Api>("agents-api")
