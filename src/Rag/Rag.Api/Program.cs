@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Rag.Api;
 using Rag.Core;
 using Rag.Core.Chunking;
@@ -11,6 +12,8 @@ builder.AddServiceDefaults();
 builder.Services.AddRagCore(builder.Configuration);
 builder.Services.Configure<AutoIngestOptions>(builder.Configuration.GetSection(AutoIngestOptions.SectionName));
 builder.Services.AddHostedService<AutoIngestionService>();
+// Return enums by name ("strategy": "FixedSize") instead of their number.
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
