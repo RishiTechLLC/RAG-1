@@ -9,8 +9,9 @@ namespace Microsoft.Extensions.Hosting;
 
 /// <summary>
 /// Turns failures from Azure services (AI Search, Storage, Azure OpenAI) into a readable problem response
-/// such as "Azure OpenAI returned 404 DeploymentNotFound: ...", instead of an opaque 500. In Development
-/// every exception's message is included; in other environments only the Azure service errors are.
+/// such as "Azure OpenAI returned 404 DeploymentNotFound: ...", instead of an opaque 500. Bad requests
+/// (e.g. a missing JSON body) are returned as 400 with the reason. In Development every exception's message
+/// is included; in other environments only Azure service errors and bad requests are.
 /// </summary>
 internal sealed class UpstreamExceptionHandler(
     IProblemDetailsService problemDetails,
@@ -21,6 +22,8 @@ internal sealed class UpstreamExceptionHandler(
     {
         var (status, title, detail) = exception switch
         {
+            // Client mistakes (missing/invalid body, bad parameter) keep their 4xx status.
+            BadHttpRequestException badRequest => (badRequest.StatusCode, "Bad request", badRequest.Message),
             RequestFailedException azure => (StatusCodes.Status502BadGateway,
                 $"An Azure service returned {azure.Status} {azure.ErrorCode}",
                 FirstLine(azure.Message)),
@@ -38,7 +41,15 @@ internal sealed class UpstreamExceptionHandler(
             return false; // fall back to the default handler (generic 500, no details)
         }
 
-        logger.LogError(exception, "{Title}: {Detail}", title, detail);
+        if (status >= StatusCodes.Status500InternalServerError)
+        {
+            logger.LogError(exception, "{Title}: {Detail}", title, detail);
+        }
+        else
+        {
+            logger.LogWarning("{Title}: {Detail}", title, detail);
+        }
+
         httpContext.Response.StatusCode = status;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
