@@ -24,6 +24,9 @@ public static class Extensions
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
 
+        // UpstreamExceptionHandler writes through IProblemDetailsService, so register it here for every app
+        // (AddProblemDetails is idempotent; apps that also call it are unaffected).
+        builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<UpstreamExceptionHandler>();
 
         builder.Services.AddServiceDiscovery();
