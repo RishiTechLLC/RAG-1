@@ -81,6 +81,40 @@ var agentsApi = builder.AddProject<Projects.Agents_Api>("agents-api")
     .WaitFor(ragApi)
     .WaitFor(mcpServer);
 
+// ---- RAG ingestion Functions app (blob trigger: indexes every file uploaded to the container) ----
+// Needs Azure Functions Core Tools v4 (Visual Studio "Azure development" workload, or
+// `winget install Microsoft.Azure.FunctionsCoreTools`). Disable with RagFunctions:Enabled=false.
+if (config.GetValue("RagFunctions:Enabled", true))
+{
+    var ragFunctions = builder.AddProject<Projects.Rag_Functions>("rag-functions")
+        .WithEnvironment("FUNCTIONS_WORKER_RUNTIME", "dotnet-isolated")
+        .WithEnvironment("DocumentsContainer", storageContainer)
+        .WithEnvironment("Ingestion__Strategy", config["RagFunctions:Strategy"] is { Length: > 0 } strategy ? strategy : "Markdown")
+        .WithAzureSettings(config);
+
+    if (!string.IsNullOrWhiteSpace(storageAccountUri))
+    {
+        // Entra ID (your az login / Visual Studio account): the Functions runtime and the trigger get
+        // identity-based connections derived from the blob URL. Your account needs Storage Blob Data Owner,
+        // Storage Queue Data Contributor and Storage Table Data Contributor on the storage account.
+        var blobUri = new Uri(storageAccountUri).GetLeftPart(UriPartial.Authority) + "/";
+        var queueUri = blobUri.Replace(".blob.", ".queue.", StringComparison.OrdinalIgnoreCase);
+        var tableUri = blobUri.Replace(".blob.", ".table.", StringComparison.OrdinalIgnoreCase);
+        ragFunctions
+            .WithEnvironment("AzureWebJobsStorage__blobServiceUri", blobUri)
+            .WithEnvironment("AzureWebJobsStorage__queueServiceUri", queueUri)
+            .WithEnvironment("AzureWebJobsStorage__tableServiceUri", tableUri)
+            .WithEnvironment("DocumentsStorage__blobServiceUri", blobUri)
+            .WithEnvironment("DocumentsStorage__queueServiceUri", queueUri);
+    }
+    else
+    {
+        ragFunctions
+            .WithEnvironment("AzureWebJobsStorage", storageConnectionString!)
+            .WithEnvironment("DocumentsStorage", storageConnectionString!);
+    }
+}
+
 // ---- Front end (Angular dev server with /api proxied to agents-api) ---------------------------
 builder.AddJavaScriptApp("chat-ui", "../../Frontend/chat-ui", "start")
     .WithHttpEndpoint(port: 4200, targetPort: 4200, isProxied: false)

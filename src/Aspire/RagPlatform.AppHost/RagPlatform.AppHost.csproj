@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Rag\Rag.Api\Rag.Api.csproj" />
+    <ProjectReference Include="..\..\Rag\Rag.Functions\Rag.Functions.csproj" />
     <ProjectReference Include="..\..\Students\Students.Api\Students.Api.csproj" />
     <ProjectReference Include="..\..\Mcp\Mcp.Server\Mcp.Server.csproj" />
     <ProjectReference Include="..\..\Agents\Agents.Api\Agents.Api.csproj" />

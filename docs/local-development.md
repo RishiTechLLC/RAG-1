@@ -127,29 +127,21 @@ The default URLs in each `appsettings.json` match these ports, so no extra wirin
 
 `src/Rag/Rag.Functions` is an Azure Functions app with a **blob trigger**. Every file you upload, or overwrite, in the `documents` container is downloaded, chunked, embedded and saved to Azure AI Search automatically. Re-uploading a file replaces its old chunks. Supported types are PDF, DOCX, MD, TXT, HTML, CSV and JSON; other files are skipped.
 
-It runs **next to** the Aspire AppHost, not inside it. Rag.Api keeps serving search for the agents.
+It starts **with the Aspire AppHost** as the `rag-functions` resource. Rag.Api keeps serving search for the agents.
 
 **1. One-time setup**
 
-* Install **Azure Functions Core Tools v4**. Visual Studio installs them with the *Azure development* workload. Otherwise run `winget install Microsoft.Azure.FunctionsCoreTools`.
-* Copy `src/Rag/Rag.Functions/local.settings.sample.json` to `local.settings.json` in the same folder. That file is git-ignored because it holds secrets. Fill in:
-  * `AzureWebJobsStorage` and `DocumentsStorage`: your storage account's connection string (Storage account → *Access keys*). The same account is fine for both.
-    If the account blocks key access, use Entra ID instead. Replace the two values with these:
-    ```json
-    "AzureWebJobsStorage__accountName": "<account>",
-    "DocumentsStorage__blobServiceUri": "https://<account>.blob.core.windows.net/",
-    "DocumentsStorage__queueServiceUri": "https://<account>.queue.core.windows.net/",
-    ```
-    Then give your account **Storage Blob Data Owner**, **Storage Queue Data Contributor** and **Storage Table Data Contributor** on the storage account, and run `az login`.
-  * `Search__Endpoint` and `AzureOpenAI__Endpoint` (plus `…__ApiKey` values if you use keys).
-  * `Ingestion__Strategy`: the chunking strategy for uploads, `Markdown` by default.
+* Install **Azure Functions Core Tools v4**. Visual Studio installs them with the *Azure development* workload. Otherwise run `winget install Microsoft.Azure.FunctionsCoreTools`. Without it, `rag-functions` fails with *"Unable to launch the Azure Functions Core Tools"*, and everything else still runs.
+* The AppHost passes the Functions app the same settings as the other services: `Azure:Storage:*`, `Azure:Search:*` and `Azure:OpenAI:*` from its user secrets. No `local.settings.json` is needed.
+  * With `Azure:Storage:AccountUri` (Entra ID), your signed-in account (Visual Studio / `az login`) also needs **Storage Blob Data Owner**, **Storage Queue Data Contributor** and **Storage Table Data Contributor** on the storage account. The Functions runtime keeps its leases, blob receipts and retry queue there. Wait about 5 minutes after assigning them.
+  * With `Azure:Storage:ConnectionString`, no extra roles are needed.
+* Optional AppHost settings: `RagFunctions:Strategy` (default `Markdown`) and `RagFunctions:Enabled` (`false` skips it, for example to save memory).
 
 **2. Run it**
 
-* **Visual Studio:** start the AppHost as usual (F5), then right-click **Rag.Functions** → **Debug** → **Start New Instance**. Or set both as startup projects.
-* **Terminal:** `cd src/Rag/Rag.Functions` then `func start`.
+Press F5 on the AppHost. The dashboard shows `rag-functions`, and its console log lists `IngestUploadedDocument: blobTrigger`.
 
-The console lists the function `IngestUploadedDocument: blobTrigger`.
+To run it on its own instead: copy `src/Rag/Rag.Functions/local.settings.sample.json` to `local.settings.json` (git-ignored), fill in the values, then run `cd src/Rag/Rag.Functions` and `func start`.
 
 **3. Upload and test**
 
@@ -157,7 +149,7 @@ The console lists the function `IngestUploadedDocument: blobTrigger`.
   ```bash
   az storage blob upload --account-name <account> -c documents -f mydoc.pdf -n policies/mydoc.pdf --auth-mode login
   ```
-* Within about a minute the Functions console shows `Ingesting policies/mydoc.pdf …` and `Indexed policies/mydoc.pdf with Markdown: N chunks`. Ask about it in the chat UI.
+* Within about a minute the `rag-functions` console log in the dashboard shows `Ingesting policies/mydoc.pdf …` and `Indexed policies/mydoc.pdf with Markdown: N chunks`. Ask about it in the chat UI.
 * **Per-file strategy:** give the blob a metadata entry `strategy` = `Semantic` (or any other strategy) to override `Ingestion__Strategy` for that file. In Storage Explorer: right-click → Properties → Metadata. With the CLI: `--metadata strategy=Semantic`.
 
 **Notes**
@@ -221,4 +213,6 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | `KeyBasedAuthenticationNotPermitted` | The storage account disallows key access. Use `Azure:Storage:AccountUri` (Entra ID) instead of a connection string. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
 | Services show *Failed to start* and their log says *Timeout … waiting for the IDE to start a run session* | Visual Studio didn't launch the services in time. Make sure it isn't paused at a breakpoint or exception, or restart it. The AppHost allows 300 s (`DCP_IDE_REQUEST_TIMEOUT_SECONDS` in its `launchSettings.json`). Alternatively run `dotnet run --project src/Aspire/RagPlatform.AppHost` from a terminal and use Debug → Attach to Process. |
+| `rag-functions` fails with *Unable to launch the Azure Functions Core Tools* | Install Core Tools v4 (see the Rag.Functions section), or set `RagFunctions:Enabled=false` in the AppHost. |
+| `rag-functions` log shows `403` / *AuthorizationPermissionMismatch* | Your account needs Storage Blob Data Owner, Queue Data Contributor and Table Data Contributor on the storage account. Wait about 5 minutes after assigning them. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |
