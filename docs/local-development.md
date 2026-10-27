@@ -123,6 +123,50 @@ Without Aspire, set the same key on the Students API itself: `dotnet user-secret
 
 The default URLs in each `appsettings.json` match these ports, so no extra wiring is needed.
 
+## Automatic ingestion when you upload a file (Rag.Functions)
+
+`src/Rag/Rag.Functions` is an Azure Functions app with a **blob trigger**. Every file you upload, or overwrite, in the `documents` container is downloaded, chunked, embedded and saved to Azure AI Search automatically. Re-uploading a file replaces its old chunks. Supported types are PDF, DOCX, MD, TXT, HTML, CSV and JSON; other files are skipped.
+
+It runs **next to** the Aspire AppHost, not inside it. Rag.Api keeps serving search for the agents.
+
+**1. One-time setup**
+
+* Install **Azure Functions Core Tools v4**. Visual Studio installs them with the *Azure development* workload. Otherwise run `winget install Microsoft.Azure.FunctionsCoreTools`.
+* Copy `src/Rag/Rag.Functions/local.settings.sample.json` to `local.settings.json` in the same folder. That file is git-ignored because it holds secrets. Fill in:
+  * `AzureWebJobsStorage` and `DocumentsStorage`: your storage account's connection string (Storage account → *Access keys*). The same account is fine for both.
+    If the account blocks key access, use Entra ID instead. Replace the two values with these:
+    ```json
+    "AzureWebJobsStorage__accountName": "<account>",
+    "DocumentsStorage__blobServiceUri": "https://<account>.blob.core.windows.net/",
+    "DocumentsStorage__queueServiceUri": "https://<account>.queue.core.windows.net/",
+    ```
+    Then give your account **Storage Blob Data Owner**, **Storage Queue Data Contributor** and **Storage Table Data Contributor** on the storage account, and run `az login`.
+  * `Search__Endpoint` and `AzureOpenAI__Endpoint` (plus `…__ApiKey` values if you use keys).
+  * `Ingestion__Strategy`: the chunking strategy for uploads, `Markdown` by default.
+
+**2. Run it**
+
+* **Visual Studio:** start the AppHost as usual (F5), then right-click **Rag.Functions** → **Debug** → **Start New Instance**. Or set both as startup projects.
+* **Terminal:** `cd src/Rag/Rag.Functions` then `func start`.
+
+The console lists the function `IngestUploadedDocument: blobTrigger`.
+
+**3. Upload and test**
+
+* Upload a file into the `documents` container: Azure portal → storage account → *Storage browser*, or Azure Storage Explorer, or:
+  ```bash
+  az storage blob upload --account-name <account> -c documents -f mydoc.pdf -n policies/mydoc.pdf --auth-mode login
+  ```
+* Within about a minute the Functions console shows `Ingesting policies/mydoc.pdf …` and `Indexed policies/mydoc.pdf with Markdown: N chunks`. Ask about it in the chat UI.
+* **Per-file strategy:** give the blob a metadata entry `strategy` = `Semantic` (or any other strategy) to override `Ingestion__Strategy` for that file. In Storage Explorer: right-click → Properties → Metadata. With the CLI: `--metadata strategy=Semantic`.
+
+**Notes**
+
+* On first start, the trigger also processes files already in the container that it hasn't seen before. That's expected.
+* The blob trigger polls, so pickup can take up to about a minute (longer for containers with many thousands of files).
+* Deleting a blob does **not** remove its chunks from the index. Delete them with a re-ingest using `recreateIndex`, or remove them in the Azure portal's Search explorer.
+* Failures (for example a wrong Search endpoint) are retried 5 times. After that, the message goes to the `webjobs-blobtrigger-poison` queue in the storage account. Fix the setting and re-upload the file.
+
 ## Running ingestion with a chosen strategy
 
 ```bash

@@ -29,3 +29,6 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Azure Functions local settings (contain secrets; copy local.settings.sample.json)
+local.settings.json

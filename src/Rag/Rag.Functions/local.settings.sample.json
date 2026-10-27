@@ -1,0 +1,18 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "AzureWebJobsStorage": "<storage account connection string>",
+    "DocumentsStorage": "<storage account connection string>",
+    "DocumentsContainer": "documents",
+
+    "Ingestion__Strategy": "Markdown",
+
+    "Search__Endpoint": "https://<your-search>.search.windows.net",
+    "Search__IndexName": "rag-chunks",
+    "AzureOpenAI__Endpoint": "https://<your-aoai>.openai.azure.com/",
+    "AzureOpenAI__ChatDeployment": "gpt-5-mini",
+    "AzureOpenAI__EmbeddingDeployment": "text-embedding-3-small"
+  }
+}

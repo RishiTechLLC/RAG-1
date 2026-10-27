@@ -44,6 +44,7 @@ src/
   Rag/Rag.Core                    chunkers, Blob loader, embeddings, AI Search index, ingestion pipeline
   Rag/Rag.Ingestion               console app: choose the chunking strategy when you run it
   Rag/Rag.Api                     /api/ingest, /api/search, /api/ask, /api/stats
+  Rag/Rag.Functions               blob trigger: indexes every file uploaded to the documents container
   Students/Students.Api           EF Core + SQL Server student information API
   Mcp/Mcp.Server                  MCP server (tools over 4 data sources)
   Agents/Agents.Api               multi-agent orchestration (Microsoft Agent Framework)

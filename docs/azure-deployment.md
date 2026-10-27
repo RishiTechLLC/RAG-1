@@ -11,6 +11,7 @@
 | **On-prem SQL (default, `AZURE_SQL_MODE=OnPrem`):** Azure Relay hybrid connection + Key Vault | The Students API reaches your SQL Server through an App Service Hybrid Connection. The connection string is stored in Key Vault and read with the managed identity |
 | *or* Azure SQL server + `students` database (`AZURE_SQL_MODE=Azure`) | Entra-only auth; the managed identity is the Entra admin |
 | App Service plan (Linux) + 4 web apps | `rag-api`, `students-api`, `mcp-server`, `agents-api` (.NET 10), tagged `service=<name>` |
+| Function App `…-rag-functions` (same plan) | Blob trigger: indexes every file uploaded to the `documents` container into Azure AI Search. Strategy: `ingestionStrategy` parameter, or a blob's `strategy` metadata |
 | Static Web App (Free) | Angular chat UI |
 | Log Analytics + Application Insights | OpenTelemetry traces/logs/metrics from every service |
 
@@ -117,6 +118,10 @@ For high availability, install the Hybrid Connection Manager on a second machine
 * Changing the password: update the `ONPREM_SQL_CONNECTION_STRING` secret and re-run the Infrastructure workflow. Key Vault gets the new value; restart the Students API so it reads the new value.
 * Key Vault uses soft delete. If you delete and recreate the resource group with the same `AZURE_ENV_NAME`, purge the old vault first (`az keyvault purge -n kv…`).
 * For a site-to-site VPN / ExpressRoute instead, add VNet integration to the Students API and use `AZURE_SQL_MODE=OnPrem` with the SQL Server's private IP or DNS name. In that case the Hybrid Connection isn't needed and can be removed.
+
+## Uploading documents in Azure
+
+Upload files into the storage account's `documents` container (portal *Storage browser*, Azure Storage Explorer, or `az storage blob upload … --auth-mode login`). The `…-rag-functions` Function App picks each one up within about a minute and indexes it. Its logs are in the portal under the Function App → *Log stream*, or in Application Insights. Your account needs **Storage Blob Data Contributor** on the storage account to upload. Setting `AZURE_DEVELOPER_PRINCIPAL_ID` grants this.
 
 ## How the pipelines work
 
