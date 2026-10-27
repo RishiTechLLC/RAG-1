@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "functionTimeout": "00:30:00",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Azure.Core": "Warning",
+      "Host.Triggers.Blobs": "Information"
+    }
+  },
+  "extensions": {
+    "blobs": {
+      "maxDegreeOfParallelism": 2
+    }
+  }
+}

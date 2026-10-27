@@ -66,6 +66,10 @@ param onPremSqlPort int = 1433
 @secure()
 param onPremSqlConnectionString string = ''
 
+@description('Chunking strategy the blob-triggered Functions app uses for uploaded files without a "strategy" metadata value.')
+@allowed(['FixedSize', 'SlidingWindow', 'Sentence', 'Paragraph', 'Recursive', 'Markdown', 'Semantic'])
+param ingestionStrategy string = 'Markdown'
+
 @description('Shared secret between Agents.Api and the MCP server. Defaults to a new random value on every deployment.')
 @secure()
 param mcpApiKey string = newGuid()
@@ -440,6 +444,68 @@ resource studentsApiHybridConnection 'Microsoft.Web/sites/hybridConnectionNamesp
 }
 
 // ---------------------------------------------------------------------------------------
+// RAG ingestion Functions app: a blob trigger indexes every file uploaded to the documents container.
+// Runs on the same App Service plan (Always On keeps the blob trigger polling). The Functions runtime
+// keeps its own state (leases, blob receipts, retry queues) in the same storage account, which needs
+// Blob Data Owner + Queue/Table Data Contributor for the managed identity.
+// ---------------------------------------------------------------------------------------
+var functionsStorageRoles = [
+  'b7e6dc6d-f1e8-4753-8033-0f276bb0955b' // Storage Blob Data Owner
+  '974c5e8b-45b9-4653-ba55-5f855dd0fb88' // Storage Queue Data Contributor
+  '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3' // Storage Table Data Contributor
+]
+
+resource functionsStorageAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for role in functionsStorageRoles: {
+  scope: storage
+  name: guid(storage.id, identity.id, role)
+  properties: {
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', role)
+  }
+}]
+
+resource ragFunctions 'Microsoft.Web/sites@2024-04-01' = {
+  name: '${prefix}-rag-functions'
+  location: location
+  tags: union(tags, { service: 'rag-functions' })
+  kind: 'functionapp,linux'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identity.id}': {} }
+  }
+  properties: {
+    serverFarmId: plan.id
+    httpsOnly: true
+    keyVaultReferenceIdentity: identity.id
+    siteConfig: {
+      linuxFxVersion: 'DOTNET-ISOLATED|10.0'
+      alwaysOn: true
+      minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
+      appSettings: concat(commonSettings, openAiSettings, [
+        { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
+        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'dotnet-isolated' }
+        // Functions host state, via managed identity (shared-key access is disabled on the account)
+        { name: 'AzureWebJobsStorage__accountName', value: storage.name }
+        { name: 'AzureWebJobsStorage__credential', value: 'managedidentity' }
+        { name: 'AzureWebJobsStorage__clientId', value: identity.properties.clientId }
+        // The documents the blob trigger watches
+        { name: 'DocumentsStorage__blobServiceUri', value: storage.properties.primaryEndpoints.blob }
+        { name: 'DocumentsStorage__queueServiceUri', value: storage.properties.primaryEndpoints.queue }
+        { name: 'DocumentsStorage__credential', value: 'managedidentity' }
+        { name: 'DocumentsStorage__clientId', value: identity.properties.clientId }
+        { name: 'DocumentsContainer', value: documentsContainer.name }
+        { name: 'Ingestion__Strategy', value: ingestionStrategy }
+        { name: 'Search__Endpoint', value: 'https://${search.name}.search.windows.net' }
+        { name: 'Search__IndexName', value: 'rag-chunks' }
+      ])
+    }
+  }
+  dependsOn: [appDataAccess, functionsStorageAccess]
+}
+
+// ---------------------------------------------------------------------------------------
 // Outputs (used by the GitHub workflows and printed after deployment)
 // ---------------------------------------------------------------------------------------
 output resourcePrefix string = prefix
@@ -461,3 +527,4 @@ output sqlMode string = sqlMode
 output sqlServerName string = useOnPremSql ? '${onPremSqlHost}:${onPremSqlPort} (on-prem)' : sqlServer!.name
 output hybridConnectionName string = useOnPremSql ? '${relay.name}/${sqlHybridConnection.name}' : ''
 output managedIdentityClientId string = identity.properties.clientId
+output ragFunctionsName string = ragFunctions.name
