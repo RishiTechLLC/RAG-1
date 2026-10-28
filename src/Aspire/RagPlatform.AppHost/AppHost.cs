@@ -81,6 +81,15 @@ var agentsApi = builder.AddProject<Projects.Agents_Api>("agents-api")
     .WaitFor(ragApi)
     .WaitFor(mcpServer);
 
+// Semantic cache: your own Redis Stack / Redis 8 (vector search), e.g. a container you run yourself:
+//   docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest
+//   dotnet user-secrets set "ConnectionStrings:redis" "localhost:6379"
+// Without it the cache is simply off.
+if (!string.IsNullOrWhiteSpace(config.GetConnectionString("redis")))
+{
+    agentsApi.WithReference(builder.AddConnectionString("redis"));
+}
+
 // ---- RAG ingestion Functions app (blob trigger: indexes every file uploaded to the container) ----
 // Needs Azure Functions Core Tools v4 (Visual Studio "Azure development" workload, or
 // `winget install Microsoft.Azure.FunctionsCoreTools`). Disable with RagFunctions:Enabled=false.

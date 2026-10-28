@@ -6,10 +6,10 @@ using OpenAI;
 
 namespace Agents.Api;
 
-/// <summary>Creates an <see cref="IChatClient"/> for an Azure OpenAI deployment via the v1 endpoint.</summary>
+/// <summary>Creates clients for an Azure OpenAI resource via its v1 endpoint (API key, or Entra ID when no key is set).</summary>
 public static class ChatClientFactory
 {
-    public static IChatClient Create(AzureOpenAIOptions options, TokenCredential credential)
+    public static OpenAIClient CreateOpenAIClient(AzureOpenAIOptions options, TokenCredential credential)
     {
         if (string.IsNullOrWhiteSpace(options.Endpoint))
         {
@@ -23,11 +23,12 @@ public static class ChatClientFactory
         };
 
 #pragma warning disable OPENAI001 // Token-credential auth for Entra ID.
-        var client = string.IsNullOrWhiteSpace(options.ApiKey)
+        return string.IsNullOrWhiteSpace(options.ApiKey)
             ? new OpenAIClient(new BearerTokenPolicy(credential, "https://cognitiveservices.azure.com/.default"), clientOptions)
             : new OpenAIClient(new ApiKeyCredential(options.ApiKey), clientOptions);
 #pragma warning restore OPENAI001
-
-        return client.GetChatClient(options.ChatDeployment).AsIChatClient();
     }
+
+    public static IChatClient Create(AzureOpenAIOptions options, TokenCredential credential) =>
+        CreateOpenAIClient(options, credential).GetChatClient(options.ChatDeployment).AsIChatClient();
 }

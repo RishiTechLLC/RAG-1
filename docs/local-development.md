@@ -132,7 +132,7 @@ It starts **with the Aspire AppHost** as the `rag-functions` resource. Rag.Api k
 **1. One-time setup**
 
 * Install **Azure Functions Core Tools v4**. Visual Studio installs them with the *Azure development* workload. Otherwise run `winget install Microsoft.Azure.FunctionsCoreTools`. Without it, `rag-functions` fails with *"Unable to launch the Azure Functions Core Tools"*, and everything else still runs.
-* The AppHost passes the Functions app the same settings as the other services: `Azure:Storage:*`, `Azure:Search:*` and `Azure:OpenAI:*` from its user secrets. No `local.settings.json` is needed.
+* The AppHost passes the Functions app the same settings as the other services: `Azure:Storage:*`, `Azure:Search:*` and `Azure:OpenAI:*` from its user secrets. The committed `src/Rag/Rag.Functions/local.settings.json` contains only `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, which the Functions runtime needs to start. **Don't add secrets to it**, because it's tracked by Git.
   * With `Azure:Storage:AccountUri` (Entra ID), your signed-in account (Visual Studio / `az login`) also needs **Storage Blob Data Owner**, **Storage Queue Data Contributor** and **Storage Table Data Contributor** on the storage account. The Functions runtime keeps its leases, blob receipts and retry queue there. Wait about 5 minutes after assigning them.
   * With `Azure:Storage:ConnectionString`, no extra roles are needed.
 * Optional AppHost settings: `RagFunctions:Strategy` (default `Markdown`) and `RagFunctions:Enabled` (`false` skips it, for example to save memory).
@@ -141,7 +141,7 @@ It starts **with the Aspire AppHost** as the `rag-functions` resource. Rag.Api k
 
 Press F5 on the AppHost. The dashboard shows `rag-functions`, and its console log lists `IngestUploadedDocument: blobTrigger`.
 
-To run it on its own instead: copy `src/Rag/Rag.Functions/local.settings.sample.json` to `local.settings.json` (git-ignored), fill in the values, then run `cd src/Rag/Rag.Functions` and `func start`.
+To run it on its own instead (without the AppHost), set the values from `src/Rag/Rag.Functions/local.settings.sample.json` as environment variables in your terminal, then run `cd src/Rag/Rag.Functions` and `func start`. Don't put them in the committed `local.settings.json`.
 
 **3. Upload and test**
 
@@ -158,6 +158,32 @@ To run it on its own instead: copy `src/Rag/Rag.Functions/local.settings.sample.
 * The blob trigger polls, so pickup can take up to about a minute (longer for containers with many thousands of files).
 * Deleting a blob does **not** remove its chunks from the index. Delete them with a re-ingest using `recreateIndex`, or remove them in the Azure portal's Search explorer.
 * Failures (for example a wrong Search endpoint) are retried 5 times. After that, the message goes to the `webjobs-blobtrigger-poison` queue in the storage account. Fix the setting and re-upload the file.
+
+## Semantic cache (Redis)
+
+Agents.Api can answer repeated questions straight from a cache. It embeds each new question, looks up the most similar earlier question in Redis, and returns that answer when the cosine similarity is at least `SemanticCache:SimilarityThreshold` (default **0.92**). A hit costs one embedding call instead of several LLM calls, and the chat trace shows a `semantic_cache` step.
+
+**Run Redis.** It needs vector search, so use **Redis Stack** or **Redis 8**. The plain `redis:7` image doesn't have it.
+```bash
+docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest   # or: redis:8
+cd src/Aspire/RagPlatform.AppHost
+dotnet user-secrets set "ConnectionStrings:redis" "localhost:6379"
+```
+Without `ConnectionStrings:redis`, the cache is simply off. If Redis goes down while the app runs, chat keeps working without the cache and a warning is logged.
+
+**What gets cached** (safety rules):
+* Only the **first question of a conversation**. Follow-ups such as "what about week 5?" depend on earlier turns. After a cache hit, the next question still gets the cached exchange as context.
+* Only answers **grounded in the document knowledge base**: the search returned passages and every step succeeded.
+* **Never** answers that used MCP data (student records, grades, rosters, calendar, weather). That data is live and personal, and must not be served to other users.
+* Answers that found nothing are **not** cached, so "I couldn't find it" doesn't outlive a later ingestion.
+
+**Settings** (`SemanticCache` section of Agents.Api): `Enabled` (default `true`), `SimilarityThreshold` (default `0.92`; lower it to match more loosely), `TimeToLive` (default `1.00:00:00`, which is 24 h), `KeyPrefix` (`semcache`). Embeddings use `AzureOpenAI:EmbeddingDeployment`.
+
+**Manage it:**
+```bash
+curl localhost:5401/api/cache/stats        # entries, hits, misses, threshold, TTL, connected
+curl -X DELETE localhost:5401/api/cache    # flush, e.g. after re-ingesting changed documents
+```
 
 ## Running ingestion with a chosen strategy
 
@@ -213,6 +239,9 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | `KeyBasedAuthenticationNotPermitted` | The storage account disallows key access. Use `Azure:Storage:AccountUri` (Entra ID) instead of a connection string. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
 | Services show *Failed to start* and their log says *Timeout … waiting for the IDE to start a run session* | Visual Studio didn't launch the services in time. Make sure it isn't paused at a breakpoint or exception, or restart it. The AppHost allows 300 s (`DCP_IDE_REQUEST_TIMEOUT_SECONDS` in its `launchSettings.json`). Alternatively run `dotnet run --project src/Aspire/RagPlatform.AppHost` from a terminal and use Debug → Attach to Process. |
+| Functions console: *Worker runtime cannot be 'None'* / *Can't determine project language from files* | `src/Rag/Rag.Functions/local.settings.json` is missing. Pull the latest `main` (it's committed), or create it with `{"IsEncrypted": false, "Values": {"FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"}}`. |
 | `rag-functions` fails with *Unable to launch the Azure Functions Core Tools* | Install Core Tools v4 (see the Rag.Functions section), or set `RagFunctions:Enabled=false` in the AppHost. |
 | `rag-functions` log shows `403` / *AuthorizationPermissionMismatch* | Your account needs Storage Blob Data Owner, Queue Data Contributor and Table Data Contributor on the storage account. Wait about 5 minutes after assigning them. |
+| Agents.Api log: *Semantic cache lookup failed* … *unknown command 'FT.INFO'* | Your Redis lacks vector search. Use `redis/redis-stack-server` or `redis:8`. |
+| Cache never hits | Check `GET /api/cache/stats` (`connected`, `entries`). Only opening questions with document answers are cached; reworded questions need similarity ≥ `SemanticCache:SimilarityThreshold`. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |

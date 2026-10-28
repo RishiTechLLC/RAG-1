@@ -30,5 +30,7 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Azure Functions local settings (contain secrets; copy local.settings.sample.json)
+# Azure Functions local settings. Rag.Functions' copy is committed with only the (non-secret)
+# worker runtime; everything else comes from the AppHost. Never add secrets to it.
 local.settings.json
+!src/Rag/Rag.Functions/local.settings.json

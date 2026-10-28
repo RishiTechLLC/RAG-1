@@ -23,6 +23,7 @@ public sealed class KnowledgeBaseTools(HttpClient http, IOptions<DownstreamOptio
         var response = await http.PostAsJsonAsync("api/search", new { query, strategy, top = Math.Clamp(top, 1, 10) }, cancellationToken);
         response.EnsureSuccessStatusCode();
         var hits = await response.Content.ReadFromJsonAsync<List<Hit>>(cancellationToken) ?? [];
+        AgentTrace.RecordKnowledgePassages(hits.Count);
         if (hits.Count == 0)
         {
             return strategy is null

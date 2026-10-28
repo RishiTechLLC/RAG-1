@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 
@@ -16,13 +17,26 @@ public static class AgentTrace
 {
     private static readonly AsyncLocal<ConcurrentQueue<TraceStep>?> Current = new();
     private static readonly AsyncLocal<string?> CurrentAgent = new();
+    private static readonly AsyncLocal<StrongBox<int>?> KnowledgePassages = new();
 
     public static ConcurrentQueue<TraceStep> Begin()
     {
         var steps = new ConcurrentQueue<TraceStep>();
         Current.Value = steps;
         CurrentAgent.Value = AgentNames.Orchestrator;
+        KnowledgePassages.Value = new StrongBox<int>(0);
         return steps;
+    }
+
+    /// <summary>Passages the knowledge base returned during this request (the semantic cache only stores grounded answers).</summary>
+    public static int KnowledgePassagesFound => KnowledgePassages.Value?.Value ?? 0;
+
+    internal static void RecordKnowledgePassages(int count)
+    {
+        if (KnowledgePassages.Value is { } box)
+        {
+            Interlocked.Add(ref box.Value, count);
+        }
     }
 
     internal static string Caller => CurrentAgent.Value ?? "unknown";

@@ -101,6 +101,7 @@ curl -X POST localhost:5101/api/ingest -H "content-type: application/json" -d '{
 * **campus_data_agent** gets its tools dynamically from the MCP server (`McpClient.ListToolsAsync()`).
 * **writer_agent** is a tool-less agent for drafting and rewriting text.
 * Conversation history is kept per `conversationId` (`AgentSession`, 30-minute sliding expiry).
+* **Semantic cache (optional, Redis):** repeated or reworded opening questions about documents are answered from Redis vector search without calling the LLM. Answers that used student/MCP data are never cached. See [docs/local-development.md](docs/local-development.md#semantic-cache-redis).
 * The response includes `steps[]`, which shows each agent hand-off and each tool call with its inputs and timings. The UI displays these steps under "How this was answered".
 
 ## Run and debug everything locally — yes, you can

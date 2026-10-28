@@ -9,6 +9,11 @@ public sealed class AzureOpenAIOptions
     public string? ApiKey { get; set; }
 
     public string ChatDeployment { get; set; } = "gpt-5-mini";
+
+    /// <summary>Embedding deployment used by the semantic cache to compare questions.</summary>
+    public string EmbeddingDeployment { get; set; } = "text-embedding-3-small";
+
+    public int EmbeddingDimensions { get; set; } = 1536;
 }
 
 public sealed class DownstreamOptions

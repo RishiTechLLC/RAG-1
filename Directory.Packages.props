@@ -19,6 +19,9 @@
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
 
+    <!-- Redis (semantic cache: vector search needs Redis Stack / Redis 8) -->
+    <PackageVersion Include="NRedisStack" Version="1.8.0" />
+
     <!-- Azure Functions (isolated worker) -->
     <PackageVersion Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />

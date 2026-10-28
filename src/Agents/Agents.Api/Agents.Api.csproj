@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="NRedisStack" />
     <PackageReference Include="OpenAI" />
   </ItemGroup>
 
