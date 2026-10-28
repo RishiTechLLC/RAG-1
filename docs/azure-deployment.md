@@ -123,6 +123,10 @@ For high availability, install the Hybrid Connection Manager on a second machine
 
 Upload files into the storage account's `documents` container (portal *Storage browser*, Azure Storage Explorer, or `az storage blob upload … --auth-mode login`). The `…-rag-functions` Function App picks each one up within about a minute and indexes it. Its logs are in the portal under the Function App → *Log stream*, or in Application Insights. Your account needs **Storage Blob Data Contributor** on the storage account to upload. Setting `AZURE_DEVELOPER_PRINCIPAL_ID` grants this.
 
+## Semantic cache in Azure
+
+The Bicep template doesn't create a Redis. Without one, the cache is off. To enable it, create an **Azure Managed Redis** instance with the **RediSearch** module (Azure Cache for Redis Basic/Standard/Premium doesn't support vector search). Then add the app setting `ConnectionStrings__redis` to the `…-agents-api` App Service, for example `<name>.<region>.redis.azure.net:10000,password=<key>,ssl=True`. A later version can switch this to Entra ID.
+
 ## How the pipelines work
 
 * **OIDC login.** `azure/login@v2` exchanges the GitHub token for an Entra token. No client secret is stored.

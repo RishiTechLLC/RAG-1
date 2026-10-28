@@ -159,6 +159,32 @@ To run it on its own instead (without the AppHost), set the values from `src/Rag
 * Deleting a blob does **not** remove its chunks from the index. Delete them with a re-ingest using `recreateIndex`, or remove them in the Azure portal's Search explorer.
 * Failures (for example a wrong Search endpoint) are retried 5 times. After that, the message goes to the `webjobs-blobtrigger-poison` queue in the storage account. Fix the setting and re-upload the file.
 
+## Semantic cache (Redis)
+
+Agents.Api can answer repeated questions straight from a cache. It embeds each new question, looks up the most similar earlier question in Redis, and returns that answer when the cosine similarity is at least `SemanticCache:SimilarityThreshold` (default **0.92**). A hit costs one embedding call instead of several LLM calls, and the chat trace shows a `semantic_cache` step.
+
+**Run Redis.** It needs vector search, so use **Redis Stack** or **Redis 8**. The plain `redis:7` image doesn't have it.
+```bash
+docker run -d --name redis -p 6379:6379 redis/redis-stack-server:latest   # or: redis:8
+cd src/Aspire/RagPlatform.AppHost
+dotnet user-secrets set "ConnectionStrings:redis" "localhost:6379"
+```
+Without `ConnectionStrings:redis`, the cache is simply off. If Redis goes down while the app runs, chat keeps working without the cache and a warning is logged.
+
+**What gets cached** (safety rules):
+* Only the **first question of a conversation**. Follow-ups such as "what about week 5?" depend on earlier turns. After a cache hit, the next question still gets the cached exchange as context.
+* Only answers **grounded in the document knowledge base**: the search returned passages and every step succeeded.
+* **Never** answers that used MCP data (student records, grades, rosters, calendar, weather). That data is live and personal, and must not be served to other users.
+* Answers that found nothing are **not** cached, so "I couldn't find it" doesn't outlive a later ingestion.
+
+**Settings** (`SemanticCache` section of Agents.Api): `Enabled` (default `true`), `SimilarityThreshold` (default `0.92`; lower it to match more loosely), `TimeToLive` (default `1.00:00:00`, which is 24 h), `KeyPrefix` (`semcache`). Embeddings use `AzureOpenAI:EmbeddingDeployment`.
+
+**Manage it:**
+```bash
+curl localhost:5401/api/cache/stats        # entries, hits, misses, threshold, TTL, connected
+curl -X DELETE localhost:5401/api/cache    # flush, e.g. after re-ingesting changed documents
+```
+
 ## Running ingestion with a chosen strategy
 
 ```bash
@@ -216,4 +242,6 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | Functions console: *Worker runtime cannot be 'None'* / *Can't determine project language from files* | `src/Rag/Rag.Functions/local.settings.json` is missing. Pull the latest `main` (it's committed), or create it with `{"IsEncrypted": false, "Values": {"FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"}}`. |
 | `rag-functions` fails with *Unable to launch the Azure Functions Core Tools* | Install Core Tools v4 (see the Rag.Functions section), or set `RagFunctions:Enabled=false` in the AppHost. |
 | `rag-functions` log shows `403` / *AuthorizationPermissionMismatch* | Your account needs Storage Blob Data Owner, Queue Data Contributor and Table Data Contributor on the storage account. Wait about 5 minutes after assigning them. |
+| Agents.Api log: *Semantic cache lookup failed* … *unknown command 'FT.INFO'* | Your Redis lacks vector search. Use `redis/redis-stack-server` or `redis:8`. |
+| Cache never hits | Check `GET /api/cache/stats` (`connected`, `entries`). Only opening questions with document answers are cached; reworded questions need similarity ≥ `SemanticCache:SimilarityThreshold`. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |
