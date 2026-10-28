@@ -132,7 +132,7 @@ It starts **with the Aspire AppHost** as the `rag-functions` resource. Rag.Api k
 **1. One-time setup**
 
 * Install **Azure Functions Core Tools v4**. Visual Studio installs them with the *Azure development* workload. Otherwise run `winget install Microsoft.Azure.FunctionsCoreTools`. Without it, `rag-functions` fails with *"Unable to launch the Azure Functions Core Tools"*, and everything else still runs.
-* The AppHost passes the Functions app the same settings as the other services: `Azure:Storage:*`, `Azure:Search:*` and `Azure:OpenAI:*` from its user secrets. No `local.settings.json` is needed.
+* The AppHost passes the Functions app the same settings as the other services: `Azure:Storage:*`, `Azure:Search:*` and `Azure:OpenAI:*` from its user secrets. The committed `src/Rag/Rag.Functions/local.settings.json` contains only `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, which the Functions runtime needs to start. **Don't add secrets to it**, because it's tracked by Git.
   * With `Azure:Storage:AccountUri` (Entra ID), your signed-in account (Visual Studio / `az login`) also needs **Storage Blob Data Owner**, **Storage Queue Data Contributor** and **Storage Table Data Contributor** on the storage account. The Functions runtime keeps its leases, blob receipts and retry queue there. Wait about 5 minutes after assigning them.
   * With `Azure:Storage:ConnectionString`, no extra roles are needed.
 * Optional AppHost settings: `RagFunctions:Strategy` (default `Markdown`) and `RagFunctions:Enabled` (`false` skips it, for example to save memory).
@@ -141,7 +141,7 @@ It starts **with the Aspire AppHost** as the `rag-functions` resource. Rag.Api k
 
 Press F5 on the AppHost. The dashboard shows `rag-functions`, and its console log lists `IngestUploadedDocument: blobTrigger`.
 
-To run it on its own instead: copy `src/Rag/Rag.Functions/local.settings.sample.json` to `local.settings.json` (git-ignored), fill in the values, then run `cd src/Rag/Rag.Functions` and `func start`.
+To run it on its own instead (without the AppHost), set the values from `src/Rag/Rag.Functions/local.settings.sample.json` as environment variables in your terminal, then run `cd src/Rag/Rag.Functions` and `func start`. Don't put them in the committed `local.settings.json`.
 
 **3. Upload and test**
 
@@ -213,6 +213,7 @@ cd src/Frontend/chat-ui && npm run test:ci           # Angular (Vitest)
 | `KeyBasedAuthenticationNotPermitted` | The storage account disallows key access. Use `Azure:Storage:AccountUri` (Entra ID) instead of a connection string. |
 | Angular `/api` calls fail | Make sure `Agents.Api` runs on :5401, or set `AGENTS_API_URL` before `npm start`. |
 | Services show *Failed to start* and their log says *Timeout … waiting for the IDE to start a run session* | Visual Studio didn't launch the services in time. Make sure it isn't paused at a breakpoint or exception, or restart it. The AppHost allows 300 s (`DCP_IDE_REQUEST_TIMEOUT_SECONDS` in its `launchSettings.json`). Alternatively run `dotnet run --project src/Aspire/RagPlatform.AppHost` from a terminal and use Debug → Attach to Process. |
+| Functions console: *Worker runtime cannot be 'None'* / *Can't determine project language from files* | `src/Rag/Rag.Functions/local.settings.json` is missing. Pull the latest `main` (it's committed), or create it with `{"IsEncrypted": false, "Values": {"FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"}}`. |
 | `rag-functions` fails with *Unable to launch the Azure Functions Core Tools* | Install Core Tools v4 (see the Rag.Functions section), or set `RagFunctions:Enabled=false` in the AppHost. |
 | `rag-functions` log shows `403` / *AuthorizationPermissionMismatch* | Your account needs Storage Blob Data Owner, Queue Data Contributor and Table Data Contributor on the storage account. Wait about 5 minutes after assigning them. |
 | Port already in use | Stop the other run, or change `applicationUrl` in the project's `Properties/launchSettings.json`. |
